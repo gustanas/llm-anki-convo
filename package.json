@@ -7,6 +7,9 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test",
-    "inline:build": "node scripts/build-inline.mjs"
+    "inline:build": "node scripts/build-inline.mjs",
+    "anki:decks": "node scripts/anki.mjs decks",
+    "anki:pull": "node scripts/anki.mjs pull",
+    "anki:build": "node scripts/build-anki.mjs"
   }
 }

@@ -1,25 +1,33 @@
-<div id="while-inline-quiz" aria-label="Quick quiz">
+<div id="while-inline-quiz" aria-label="Quick practice">
   <div class="viz-row">
-    <span class="text-small text-muted" id="while-inline-category">Sample questions</span>
-    <span class="text-small tabular-nums" id="while-inline-progress">1 / 8</span>
+    <span class="text-small text-muted" id="while-inline-category">Practice</span>
+    <span class="text-small tabular-nums" id="while-inline-progress">…</span>
   </div>
-  <h3 id="while-inline-question">How many hearts does an octopus have?</h3>
+  <h3 id="while-inline-question">Loading your cards…</h3>
+  <div class="while-inline-media" id="while-inline-question-media"></div>
   <div class="viz-grid" id="while-inline-choices" role="group" aria-labelledby="while-inline-question"></div>
   <div id="while-inline-feedback" aria-live="polite" aria-atomic="true"></div>
   <div class="viz-row" id="while-inline-actions">
     <button type="button" class="btn btn-ghost" id="while-inline-skip">Skip</button>
+    <button type="button" class="btn btn-primary" id="while-inline-reveal" hidden>Show answer</button>
     <button type="button" class="btn btn-primary" id="while-inline-next" disabled>Next question</button>
-    <span class="text-small text-muted" id="while-inline-score">0 correct</span>
+    <span class="text-small text-muted" id="while-inline-score"></span>
   </div>
+  <span class="text-small text-muted" id="while-inline-note" hidden>Practice copy · Anki scheduling unchanged</span>
   <script type="application/json" id="while-inline-cards">__WHILE_CARDS_JSON__</script>
 </div>
 <style>
   #while-inline-quiz { display: grid; gap: 14px; }
   #while-inline-quiz h3 { margin: 0; }
-  #while-inline-feedback:empty { display: none; }
-  #while-inline-feedback p { margin: 0; }
+  #while-inline-question { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #while-inline-feedback:empty, #while-inline-choices:empty, #while-inline-quiz .while-inline-media:empty { display: none; }
+  #while-inline-feedback p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   #while-inline-feedback p + p { margin-top: 6px; }
   #while-inline-actions { margin-top: 2px; }
+  #while-inline-quiz .while-inline-media { display: grid; gap: 12px; }
+  #while-inline-feedback .while-inline-media:not(:empty) { margin-top: 12px; }
+  #while-inline-quiz .while-inline-media img { display: block; max-width: 100%; max-height: 280px; object-fit: contain; }
+  #while-inline-quiz .while-inline-media audio { width: 100%; }
 </style>
 <script>
 (() => {
@@ -28,20 +36,58 @@
   const category = root.querySelector('#while-inline-category');
   const progress = root.querySelector('#while-inline-progress');
   const question = root.querySelector('#while-inline-question');
+  const questionMedia = root.querySelector('#while-inline-question-media');
   const choices = root.querySelector('#while-inline-choices');
   const feedback = root.querySelector('#while-inline-feedback');
   const next = root.querySelector('#while-inline-next');
   const skip = root.querySelector('#while-inline-skip');
+  const reveal = root.querySelector('#while-inline-reveal');
   const scoreLabel = root.querySelector('#while-inline-score');
-  const deckId = JSON.stringify(cards.map(card => [card.id, card.question, card.choices, card.answerIndex]));
+  const note = root.querySelector('#while-inline-note');
+  const isFlashcard = card => card.type === 'flashcard';
+  const flashcardCount = cards.filter(isFlashcard).length;
+  const quizCount = cards.length - flashcardCount;
+  const deckId = fingerprint(cards);
+  const imageSource = /^data:image\/(?:png|jpeg|gif|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  const audioSource = /^data:audio\/(?:mpeg|mp3|ogg|wav|mp4|aac|flac);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
   let index = 0;
   let answers = Array(cards.length).fill(null);
   let revision = 0;
 
+  function fingerprint(deck) {
+    // Hash all meaningful card content, keeping text and media out of saved state.
+    const content = JSON.stringify(deck.map(card => isFlashcard(card)
+      ? [card.id, 'flashcard', card.question, card.answer]
+      : [card.id, 'quiz', card.question, card.choices, card.answerIndex]));
+    let hash = 2166136261;
+    function add(value) {
+      const text = String(value);
+      const length = `${text.length}:`;
+      for (let i = 0; i < length.length; i += 1) hash = Math.imul(hash ^ length.charCodeAt(i), 16777619);
+      for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+    }
+    add(content);
+    for (const card of deck) {
+      for (const side of ['question', 'answer']) {
+        const media = card.media?.[side] ?? [];
+        add(side);
+        add(media.length);
+        for (const item of media) {
+          add(item.type);
+          add(item.src);
+          add(item.alt ?? '');
+        }
+      }
+    }
+    return `while-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  }
+
   function restore(snapshot) {
     const saved = snapshot?.privateContent;
-    if (!saved || saved.version !== 1 || saved.deckId !== deckId || !Number.isInteger(saved.index) || saved.index < 0 || saved.index > cards.length || !Array.isArray(saved.answers) || saved.answers.length !== cards.length || !Number.isInteger(saved.revision) || saved.revision < revision) return false;
-    if (!saved.answers.every((answer, i) => answer === null || (Number.isInteger(answer) && answer >= 0 && answer < cards[i].choices.length))) return false;
+    if (!saved || saved.version !== 2 || saved.deckId !== deckId || !Number.isInteger(saved.index) || saved.index < 0 || saved.index > cards.length || !Array.isArray(saved.answers) || saved.answers.length !== cards.length || !Number.isInteger(saved.revision) || saved.revision < revision) return false;
+    if (!saved.answers.every((answer, i) => answer === null || (isFlashcard(cards[i]) ? answer === true : Number.isInteger(answer) && answer >= 0 && answer < cards[i].choices.length))) return false;
+    // There cannot be a saved answer for a card the user has not reached yet.
+    if (saved.answers.some((answer, i) => i > saved.index && answer !== null)) return false;
     index = saved.index;
     answers = saved.answers.slice();
     revision = saved.revision;
@@ -50,17 +96,18 @@
 
   function totals() {
     return {
-      correct: answers.filter((answer, i) => answer === cards[i].answerIndex).length,
-      answered: answers.filter(answer => answer !== null).length
+      correct: answers.filter((answer, i) => !isFlashcard(cards[i]) && answer !== null && answer === cards[i].answerIndex).length,
+      answered: answers.filter((answer, i) => !isFlashcard(cards[i]) && answer !== null).length,
+      reviewed: answers.filter((answer, i) => isFlashcard(cards[i]) && answer === true).length
     };
   }
 
   function save() {
     revision += 1;
-    const { correct, answered } = totals();
+    const { correct, answered, reviewed } = totals();
     const snapshot = {
-      modelContent: { quiz: 'While sample questions', correct, answered, total: cards.length, completed: index === cards.length, currentQuestionId: cards[index]?.id ?? null },
-      privateContent: { version: 1, deckId, index, answers: answers.slice(), revision }
+      modelContent: { practice: 'While', correct, answered, reviewed, total: cards.length, completed: index === cards.length, currentCardId: cards[index]?.id ?? null },
+      privateContent: { version: 2, deckId, index, answers: answers.slice(), revision }
     };
     try {
       const pending = window.openai?.setWidgetState?.(snapshot);
@@ -76,16 +123,45 @@
     feedback.replaceChildren(lead, explanation);
   }
 
+  function addMedia(container, media, side) {
+    if (!Array.isArray(media)) return;
+    for (const item of media) {
+      if (!item || typeof item.src !== 'string') continue;
+      if (item.type === 'image' && imageSource.test(item.src)) {
+        const image = document.createElement('img');
+        image.src = item.src;
+        image.alt = typeof item.alt === 'string' && item.alt.trim() ? item.alt : `${side} image`;
+        container.append(image);
+      } else if (item.type === 'audio' && audioSource.test(item.src)) {
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.preload = 'none';
+        audio.src = item.src;
+        audio.setAttribute('aria-label', typeof item.alt === 'string' && item.alt.trim() ? item.alt : `${side} audio`);
+        audio.textContent = 'Your browser cannot play this audio.';
+        container.append(audio);
+      }
+    }
+  }
+
   function render() {
-    const { correct, answered } = totals();
-    scoreLabel.textContent = `${correct} correct · ${answered} answered`;
+    const { correct, answered, reviewed } = totals();
+    scoreLabel.textContent = quizCount === 0 ? `${reviewed} reviewed`
+      : flashcardCount === 0 ? `${correct} correct · ${answered} answered`
+      : `${reviewed} reviewed · ${correct} / ${answered} quiz answers correct`;
+    note.hidden = flashcardCount === 0;
+    questionMedia.replaceChildren();
     choices.replaceChildren();
     feedback.replaceChildren();
+    reveal.hidden = true;
+    next.hidden = false;
     if (index === cards.length) {
       category.textContent = 'Collection complete';
       progress.textContent = `${cards.length} / ${cards.length}`;
-      question.textContent = 'A little wiser already.';
-      addFeedback(`${correct} of ${cards.length} correct`, `${answered} answered · ${cards.length - answered} skipped`);
+      question.textContent = quizCount === 0 ? 'Practice complete.' : 'A little wiser already.';
+      if (quizCount === 0) addFeedback(`${reviewed} of ${cards.length} reviewed`, `${cards.length - reviewed} skipped`);
+      else if (flashcardCount === 0) addFeedback(`${correct} of ${cards.length} correct`, `${answered} answered · ${cards.length - answered} skipped`);
+      else addFeedback(`${reviewed} flashcards reviewed · ${correct} of ${quizCount} quiz answers correct`, `${cards.length - answered - reviewed} skipped`);
       skip.hidden = true;
       next.disabled = false;
       next.textContent = 'Practice again';
@@ -97,9 +173,22 @@
     category.textContent = card.category;
     progress.textContent = `${index + 1} / ${cards.length}`;
     question.textContent = card.question;
+    addMedia(questionMedia, card.media?.question, 'Question');
     skip.hidden = answeredCard;
     next.disabled = !answeredCard;
-    next.textContent = index === cards.length - 1 ? 'See results' : 'Next question';
+    next.textContent = index === cards.length - 1 ? 'See results' : isFlashcard(card) ? 'Next card' : 'Next question';
+    if (isFlashcard(card)) {
+      reveal.hidden = answeredCard;
+      next.hidden = !answeredCard;
+      if (answeredCard) {
+        addFeedback('Answer', card.answer);
+        const answerMedia = document.createElement('div');
+        answerMedia.className = 'while-inline-media';
+        addMedia(answerMedia, card.media?.answer, 'Answer');
+        feedback.append(answerMedia);
+      }
+      return;
+    }
     card.choices.forEach((choice, choiceIndex) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -119,13 +208,24 @@
   }
 
   function choose(choiceIndex) {
-    if (index >= cards.length || answers[index] !== null || choiceIndex >= cards[index].choices.length) return;
+    if (index >= cards.length || isFlashcard(cards[index]) || answers[index] !== null || !Number.isInteger(choiceIndex) || choiceIndex < 0 || choiceIndex >= cards[index].choices.length) return;
     answers[index] = choiceIndex;
     save();
     render();
     next.focus({ preventScroll: true });
   }
 
+  function focusCurrentAction() {
+    (index < cards.length && isFlashcard(cards[index]) && !reveal.hidden ? reveal : choices.querySelector('button') || next).focus({ preventScroll: true });
+  }
+
+  reveal.addEventListener('click', () => {
+    if (index >= cards.length || !isFlashcard(cards[index]) || answers[index] !== null) return;
+    answers[index] = true;
+    save();
+    render();
+    next.focus({ preventScroll: true });
+  });
   next.addEventListener('click', () => {
     if (index === cards.length) {
       index = 0;
@@ -134,17 +234,17 @@
     else return;
     save();
     render();
-    (choices.querySelector('button') || next).focus({ preventScroll: true });
+    focusCurrentAction();
   });
   skip.addEventListener('click', () => {
     if (index >= cards.length || answers[index] !== null) return;
     index += 1;
     save();
     render();
-    (choices.querySelector('button') || next).focus({ preventScroll: true });
+    focusCurrentAction();
   });
   root.addEventListener('keydown', event => {
-    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !/^[1-4]$/.test(event.key)) return;
+    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.target.closest('audio, input, textarea, select, [contenteditable="true"]') || index >= cards.length || isFlashcard(cards[index]) || !/^[1-4]$/.test(event.key)) return;
     event.preventDefault();
     choose(Number(event.key) - 1);
   });

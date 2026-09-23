@@ -6,7 +6,7 @@ import { Script } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
-import { buildInlineHtml } from '../scripts/build-inline.mjs';
+import { buildInline, buildInlineHtml } from '../scripts/build-inline.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const BUILDER = path.join(ROOT, 'scripts', 'build-inline.mjs');
@@ -15,6 +15,9 @@ const CARD = {
   id: 'sample', category: 'Sample', question: 'Which choice?',
   choices: ['First', 'Second'], answerIndex: 1, explanation: 'The second choice.',
 };
+const FLASHCARD = { id: 'anki:1', type: 'flashcard', category: 'Languages', question: 'Bonjour', answer: 'Hello' };
+const IMAGE = 'data:image/png;base64,YQ==';
+const AUDIO = 'data:audio/mpeg;base64,YQ==';
 
 function embeddedCards(html) {
   const block = html.match(/<script\b[^>]*\bid="while-inline-cards"[^>]*>([\s\S]*?)<\/script\s*>/i);
@@ -79,6 +82,86 @@ test('invalid decks cannot produce unanswerable cards or ambiguous saved IDs', (
   assert.deepEqual(embeddedCards(buildInlineHtml(TEMPLATE, [{ ...CARD, answerIndex: 0 }])).cards, [{ ...CARD, answerIndex: 0 }]);
 });
 
+test('flashcards, mixed decks, and media-only sides round-trip without exposing markup', () => {
+  const cards = [
+    { ...FLASHCARD, answer: '</script><img src=x onerror=alert(1)>', media: { question: [{ type: 'image', src: IMAGE, alt: '<script>picture</script>' }], answer: [{ type: 'audio', src: AUDIO }] } },
+    { ...FLASHCARD, id: 'anki:2', question: '', answer: '', media: { question: [{ type: 'image', src: IMAGE }], answer: [{ type: 'audio', src: AUDIO, alt: 'Pronunciation' }] } },
+    CARD,
+    { ...CARD, id: 'explicit-quiz', type: 'quiz' },
+  ];
+  const html = buildInlineHtml(TEMPLATE, cards);
+  const embedded = embeddedCards(html);
+  assert.deepEqual(embedded.cards, cards);
+  assert.equal(embedded.text.includes('<'), false);
+  assert.equal((html.match(/<script\b/gi) || []).length, 1);
+});
+
+test('unknown card types, incomplete flashcards, and unsafe media are rejected', () => {
+  for (const card of [
+    { ...FLASHCARD, type: 'unknown' },
+    { ...CARD, type: null },
+    { ...FLASHCARD, answer: undefined },
+    { ...FLASHCARD, answer: '  ' },
+    { ...FLASHCARD, question: '' },
+    { ...FLASHCARD, answer: [] },
+    { ...FLASHCARD, media: null },
+    { ...FLASHCARD, media: [] },
+    { ...FLASHCARD, media: { question: 'https://example.com/image.png' } },
+    { ...FLASHCARD, media: { unknown: [] } },
+  ]) assert.throws(() => buildInlineHtml(TEMPLATE, [card]), /unsupported card type|invalid flashcard shape|invalid or unsafe media/);
+
+  const unsafeItems = [
+    null,
+    { type: 'image', src: 'https://example.com/tracker.png' },
+    { type: 'image', src: 'javascript:alert(1)' },
+    { type: 'image', src: 'data:image/svg+xml;base64,YQ==' },
+    { type: 'image', src: 'data:text/html;base64,YQ==' },
+    { type: 'image', src: 'data:image/png;base64,' },
+    { type: 'image', src: 'data:image/png;base64,YQ=' },
+    { type: 'image', src: 'data:image/png;base64,YQ==\n' },
+    { type: 'image', src: IMAGE, alt: 3 },
+    { type: 'image', src: IMAGE, onload: 'alert(1)' },
+    { type: 'audio', src: IMAGE },
+    { type: 'audio', src: 'data:audio/unsupported;base64,YQ==' },
+    { type: 'video', src: 'data:video/mp4;base64,YQ==' },
+  ];
+  for (const item of unsafeItems) {
+    assert.throws(() => buildInlineHtml(TEMPLATE, [{ ...FLASHCARD, media: { question: [item] } }]), /invalid or unsafe media/);
+    assert.throws(() => buildInlineHtml(TEMPLATE, [{ ...CARD, media: { answer: [item] } }]), /invalid or unsafe media/);
+  }
+});
+
+test('inline limits count final UTF-8 bytes and permit at most 100 cards', () => {
+  const hundred = Array.from({ length: 100 }, (_, index) => ({ ...FLASHCARD, id: `anki:${index}` }));
+  assert.equal(embeddedCards(buildInlineHtml(TEMPLATE, hundred)).cards.length, 100);
+  assert.throws(() => buildInlineHtml(TEMPLATE, [...hundred, { ...FLASHCARD, id: 'anki:100' }]), /at most 100 cards/);
+
+  const base = { ...FLASHCARD, answer: 'A' };
+  const answerLength = 1_000_000 - Buffer.byteLength(buildInlineHtml(TEMPLATE, [base])) + 1;
+  assert.equal(Buffer.byteLength(buildInlineHtml(TEMPLATE, [{ ...base, answer: 'A'.repeat(answerLength) }])), 1_000_000);
+  assert.throws(() => buildInlineHtml(TEMPLATE, [{ ...base, answer: 'A'.repeat(answerLength + 1) }]), /1,000,000 bytes/);
+  assert.throws(() => buildInlineHtml(TEMPLATE, [{ ...base, answer: '🌙'.repeat(250_000) }]), /1,000,000 bytes/);
+  assert.throws(() => buildInlineHtml(TEMPLATE, [{ ...base, answer: '<'.repeat(200_000) }]), /1,000,000 bytes/);
+  assert.throws(() => buildInlineHtml(TEMPLATE, [{ ...FLASHCARD, media: { question: [{ type: 'image', src: `data:image/png;base64,${'AAAA'.repeat(250_000)}` }] } }]), /1,000,000 bytes/);
+});
+
+test('buildInline accepts an explicit deck or cardsPath and validates before replacing an output', async (t) => {
+  const directory = await temporaryDirectory(t);
+  const output = path.join(directory, 'custom.html');
+  const cardsPath = path.join(directory, 'custom.json');
+  const cards = [{ ...FLASHCARD, media: { answer: [{ type: 'audio', src: AUDIO }] } }];
+  await writeFile(cardsPath, JSON.stringify(cards));
+  assert.equal(await buildInline(output, { cards }), output);
+  assert.deepEqual(embeddedCards(await readFile(output, 'utf8')).cards, cards);
+  await buildInline(output, { cardsPath });
+  assert.deepEqual(embeddedCards(await readFile(output, 'utf8')).cards, cards);
+  const existing = await readFile(output, 'utf8');
+  await assert.rejects(buildInline(output, { cards, cardsPath }), /not both/);
+  await assert.rejects(buildInline(output, { cardsPath: 'relative.json' }), /absolute cards path/);
+  await assert.rejects(buildInline(output, { cards: [{ ...FLASHCARD, answer: 'A'.repeat(1_000_000) }] }), /1,000,000 bytes/);
+  assert.equal(await readFile(output, 'utf8'), existing, 'Rejected builds leave the previous output intact.');
+});
+
 test('the CLI builds the bundled quiz from an unrelated working directory', async (t) => {
   const directory = await temporaryDirectory(t);
   const output = path.join(directory, 'new', 'nested', 'quiz.html');
@@ -93,6 +176,24 @@ test('the CLI builds the bundled quiz from an unrelated working directory', asyn
   for (const [, attributes, source] of scripts) {
     if (!/type="application\/json"/i.test(attributes)) assert.doesNotThrow(() => new Script(source));
   }
+});
+
+test('the standalone CLI imports a custom flashcard JSON file with --cards', async (t) => {
+  const fixture = await isolatedProject(t);
+  const directory = await temporaryDirectory(t);
+  const output = path.join(directory, 'imported.html');
+  const cardsPath = path.join(directory, 'imported.json');
+  const cards = [{ ...FLASHCARD, media: { question: [{ type: 'image', src: IMAGE }], answer: [{ type: 'audio', src: AUDIO }] } }];
+  await writeFile(cardsPath, JSON.stringify(cards));
+  const result = runBuilder(fixture.script, [output, '--cards', cardsPath], directory);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(embeddedCards(await readFile(output, 'utf8')).cards, cards);
+  for (const args of [[output, '--cards'], [output, '--unknown', cardsPath], [output, '--cards', cardsPath, '--cards', cardsPath], [output, '--cards', 'relative.json']]) {
+    const invalid = runBuilder(fixture.script, args, directory);
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /Usage:|absolute cards path/);
+  }
+  assert.deepEqual(embeddedCards(await readFile(output, 'utf8')).cards, cards, 'Invalid CLI arguments do not replace existing output.');
 });
 
 test('the CLI rejects invalid output arguments and direct template replacement', async (t) => {
