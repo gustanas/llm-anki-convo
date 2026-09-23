@@ -1,6 +1,4 @@
-.runtime/
-# Generated hook commands contain paths specific to this computer.
-.codex/hooks.json
+dist/
 .DS_Store
 node_modules/
 .env

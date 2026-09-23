@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -35,6 +35,13 @@ export async function buildInline(outputPath) {
     throw new Error('Provide one absolute output path ending in .html.');
   }
   if (path.resolve(outputPath) === TEMPLATE_PATH) throw new Error('The output must not replace the inline template.');
+  try {
+    if (await realpath(outputPath) === await realpath(TEMPLATE_PATH)) {
+      throw new Error('The output must not replace the inline template.');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   const [template, data] = await Promise.all([
     readFile(TEMPLATE_PATH, 'utf8'),
     readFile(path.join(ROOT, 'data', 'cards.json'), 'utf8'),

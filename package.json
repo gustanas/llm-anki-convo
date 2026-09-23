@@ -3,12 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A small local quiz companion for time spent waiting for Codex.",
+  "description": "An inline quiz for time spent waiting for Codex.",
   "engines": { "node": ">=22" },
   "scripts": {
-    "start": "node server.mjs",
     "test": "node --test",
-    "inline:build": "node scripts/build-inline.mjs",
-    "hooks:install": "node scripts/install-hooks.mjs"
+    "inline:build": "node scripts/build-inline.mjs"
   }
 }
