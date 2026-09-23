@@ -50,6 +50,17 @@ test('API v6 messages authenticate locally and write actions never reach Anki', 
   assert.equal(calls.length, 2);
 });
 
+test('review writes require an explicit client and contain one validated Anki grade', async (t) => {
+  const { client, calls } = await fakeAnki(t, (message, res) => reply(res,
+    message.action === 'answerCards' ? [true] : { 42: [{ id: 1234, ease: 3 }] }), { reviewWrites: true });
+  await assert.rejects(client.invoke('sync'), { code: 'READ_ONLY' });
+  await assert.rejects(client.answerCard(42, 5), /rating from 1 to 4/);
+  assert.equal(await client.answerCard(42, 3), true);
+  assert.deepEqual(calls[0], { action: 'answerCards', version: 6, params: { answers: [{ cardId: 42, ease: 3 }] } });
+  assert.deepEqual(await client.reviewHistory(42), [{ id: 1234, ease: 3 }]);
+  assert.equal(calls.length, 2);
+});
+
 test('API errors redact keys and invalid responses do not become fabricated results', async (t) => {
   let step = 0;
   const { client } = await fakeAnki(t, (_, res) => {

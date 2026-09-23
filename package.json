@@ -10,6 +10,7 @@
     "inline:build": "node scripts/build-inline.mjs",
     "anki:decks": "node scripts/anki.mjs decks",
     "anki:pull": "node scripts/anki.mjs pull",
-    "anki:build": "node scripts/build-anki.mjs"
+    "anki:build": "node scripts/build-anki.mjs",
+    "anki:review": "node scripts/review-anki.mjs"
   }
 }

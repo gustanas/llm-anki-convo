@@ -1,0 +1,155 @@
+<section id="while-anki-review" aria-label="Anki review">
+  <div class="viz-row">
+    <span id="while-review-deck" class="text-small text-muted"></span>
+    <span id="while-review-progress" class="text-small tabular-nums"></span>
+  </div>
+  <h3 id="while-review-question"></h3>
+  <div id="while-review-question-media" class="while-review-media"></div>
+  <div id="while-review-answer" aria-live="polite" hidden>
+    <hr>
+    <p id="while-review-answer-text"></p>
+    <div id="while-review-answer-media" class="while-review-media"></div>
+  </div>
+  <div class="viz-row" id="while-review-reveal-row">
+    <button type="button" class="btn btn-primary" id="while-review-reveal">Show answer</button>
+  </div>
+  <div class="viz-grid" id="while-review-ratings" role="group" aria-label="Record Anki rating" hidden></div>
+  <p id="while-review-status" class="text-small text-muted" aria-live="polite"></p>
+  <script type="application/json" id="while-review-data">__WHILE_REVIEW_JSON__</script>
+</section>
+<style>
+  #while-anki-review { display: grid; gap: 14px; }
+  #while-anki-review h3, #while-anki-review p { margin: 0; overflow-wrap: anywhere; }
+  #while-review-question, #while-review-answer-text { white-space: pre-wrap; }
+  #while-anki-review .while-review-media { display: grid; gap: 12px; }
+  #while-anki-review .while-review-media:empty { display: none; }
+  #while-anki-review .while-review-media img { display: block; max-width: 100%; max-height: 280px; object-fit: contain; }
+  #while-anki-review .while-review-media audio { width: 100%; }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('while-anki-review');
+  const data = JSON.parse(root.querySelector('#while-review-data').textContent);
+  const deck = root.querySelector('#while-review-deck');
+  const progress = root.querySelector('#while-review-progress');
+  const question = root.querySelector('#while-review-question');
+  const questionMedia = root.querySelector('#while-review-question-media');
+  const answer = root.querySelector('#while-review-answer');
+  const answerText = root.querySelector('#while-review-answer-text');
+  const answerMedia = root.querySelector('#while-review-answer-media');
+  const revealRow = root.querySelector('#while-review-reveal-row');
+  const reveal = root.querySelector('#while-review-reveal');
+  const ratings = root.querySelector('#while-review-ratings');
+  const status = root.querySelector('#while-review-status');
+  const imageSource = /^data:image\/(?:png|jpeg|gif|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  const audioSource = /^data:audio\/(?:mpeg|mp3|ogg|wav|mp4|aac|flac);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  let revealed = false;
+  let sending = false;
+
+  function addMedia(container, items, side) {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (!item || typeof item.src !== 'string') continue;
+      if (item.type === 'image' && imageSource.test(item.src)) {
+        const image = document.createElement('img');
+        image.src = item.src;
+        image.alt = typeof item.alt === 'string' && item.alt.trim() ? item.alt : `${side} image`;
+        container.append(image);
+      } else if (item.type === 'audio' && audioSource.test(item.src)) {
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.preload = 'none';
+        audio.src = item.src;
+        audio.setAttribute('aria-label', `${side} audio`);
+        container.append(audio);
+      }
+    }
+  }
+
+  function save() {
+    try {
+      const pending = window.openai?.setWidgetState?.({
+        modelContent: { practice: 'While Anki review', sessionId: data.sessionId, cardId: data.cardId, revealed },
+        privateContent: { version: 1, nonce: data.nonce, revealed }
+      });
+      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    } catch { /* Review controls remain available without state persistence. */ }
+  }
+
+  function render() {
+    deck.textContent = data.deck;
+    progress.textContent = `${data.reviewed} saved${data.remaining === null ? '' : ` · ${data.remaining} available`}`;
+    if (data.done) {
+      question.textContent = 'No due or new cards remain.';
+      revealRow.hidden = true;
+      ratings.hidden = true;
+      status.textContent = 'Your saved ratings are in Anki.';
+      return;
+    }
+    answer.hidden = !revealed;
+    revealRow.hidden = revealed;
+    ratings.hidden = !revealed;
+    for (const button of ratings.querySelectorAll('button')) button.disabled = sending;
+  }
+
+  reveal.addEventListener('click', () => {
+    if (data.done || revealed) return;
+    revealed = true;
+    save();
+    render();
+    ratings.querySelector('button')?.focus({ preventScroll: true });
+  });
+
+  if (!data.done) {
+    question.textContent = data.card.question;
+    addMedia(questionMedia, data.card.media?.question, 'Question');
+    answerText.textContent = data.card.answer;
+    addMedia(answerMedia, data.card.media?.answer, 'Answer');
+    ['Again', 'Hard', 'Good', 'Easy'].forEach((label, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `btn${index === 2 ? ' btn-primary' : ''}`;
+      button.textContent = `${label}${data.intervals[index] ? ` · ${data.intervals[index]}` : ''}`;
+      button.setAttribute('aria-label', `Record ${label} in Anki`);
+      button.addEventListener('click', async () => {
+        if (!revealed || sending) return;
+        if (typeof window.openai?.sendFollowUpMessage !== 'function') {
+          status.textContent = 'Codex review actions are unavailable here. Your rating was not saved.';
+          return;
+        }
+        sending = true;
+        status.textContent = `Saving ${label} in Anki…`;
+        save();
+        render();
+        const prompt = `While Anki rating v1: session=${data.sessionId} card=${data.cardId} nonce=${data.nonce} ease=${index + 1}. Save this user-selected rating in Anki using the repository review command, then show the next inline card at the chat end. If saving fails, say so and leave this card active.`;
+        try {
+          await window.openai.sendFollowUpMessage({ prompt, scrollToBottom: true });
+          status.textContent = 'Sent to Codex for saving…';
+        } catch {
+          sending = false;
+          status.textContent = 'Could not send the rating. Try again; nothing was saved.';
+          save();
+          render();
+        }
+      });
+      ratings.append(button);
+    });
+  }
+
+  const saved = window.openai?.widgetState?.privateContent;
+  if (!data.done && saved?.version === 1 && saved.nonce === data.nonce) {
+    revealed = saved.revealed === true;
+  }
+  window.addEventListener('openai:set_globals', (event) => {
+    const next = event.detail?.globals?.widgetState?.privateContent;
+    if (!data.done && next?.version === 1 && next.nonce === data.nonce) {
+      revealed = next.revealed === true;
+      answer.hidden = !revealed;
+      revealRow.hidden = revealed;
+      ratings.hidden = !revealed;
+      for (const button of ratings.querySelectorAll('button')) button.disabled = sending;
+    }
+  });
+  render();
+})();
+</script>
