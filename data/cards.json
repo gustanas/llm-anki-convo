@@ -1,0 +1,66 @@
+[
+  {
+    "id": "octopus-hearts",
+    "category": "Natural world",
+    "question": "How many hearts does an octopus have?",
+    "choices": ["One", "Two", "Three", "Four"],
+    "answerIndex": 2,
+    "explanation": "Three. Two hearts pump blood through the gills, and the third sends it around the rest of the body."
+  },
+  {
+    "id": "venus-day",
+    "category": "Space",
+    "question": "Which planet takes longer to rotate once than to orbit the Sun?",
+    "choices": ["Mars", "Venus", "Jupiter", "Mercury"],
+    "answerIndex": 1,
+    "explanation": "Venus takes about 243 Earth days to rotate once and about 225 Earth days to orbit the Sun. That is its sidereal rotation period; its sunrise-to-sunrise day is different."
+  },
+  {
+    "id": "binary-search",
+    "category": "Little bits of code",
+    "question": "What does binary search require of the list it searches?",
+    "choices": ["An even number of items", "Only unique items", "Items in sorted order", "At least 100 items"],
+    "answerIndex": 2,
+    "explanation": "Sorted order. Each comparison lets binary search discard half of the remaining range. The values do not have to be unique."
+  },
+  {
+    "id": "banana-berry",
+    "category": "Natural world",
+    "question": "Which of these fruits is a berry in the botanical sense?",
+    "choices": ["Strawberry", "Raspberry", "Blackberry", "Banana"],
+    "answerIndex": 3,
+    "explanation": "A banana! Botanical berries develop from a single ovary. Strawberries are accessory fruits, while raspberries and blackberries are aggregates of small drupelets."
+  },
+  {
+    "id": "http-teapot",
+    "category": "Little bits of code",
+    "question": "Which HTTP status code is famously associated with “I'm a teapot”?",
+    "choices": ["418", "404", "201", "503"],
+    "answerIndex": 0,
+    "explanation": "418. It originated in the 1998 April Fools' Hyper Text Coffee Pot Control Protocol: a teapot should refuse a request to brew coffee."
+  },
+  {
+    "id": "light-moon",
+    "category": "Space",
+    "question": "Roughly how long does light take to travel from the Moon to Earth?",
+    "choices": ["1.3 seconds", "30 seconds", "8 minutes", "1 hour"],
+    "answerIndex": 0,
+    "explanation": "About 1.3 seconds, depending on the Moon's distance. Its average distance is about 384,400 km, and light travels about 299,792 km per second."
+  },
+  {
+    "id": "hexadecimal",
+    "category": "Little bits of code",
+    "question": "What is the decimal value of the hexadecimal number FF?",
+    "choices": ["16", "128", "255", "256"],
+    "answerIndex": 2,
+    "explanation": "255. Each F represents 15, so FF means (15 × 16) + 15. This is the largest value an unsigned 8-bit byte can hold."
+  },
+  {
+    "id": "sound-vacuum",
+    "category": "Everyday science",
+    "question": "Why can't ordinary sound travel through a vacuum?",
+    "choices": ["It is too cold", "There are no particles to carry the vibrations", "Gravity cancels the waves", "Light absorbs the sound"],
+    "answerIndex": 1,
+    "explanation": "Sound is a mechanical wave: it travels by vibrating matter such as air, water, or a solid. A vacuum lacks that medium. Light, an electromagnetic wave, can still travel through it."
+  }
+]

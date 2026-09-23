@@ -1,0 +1,157 @@
+<div id="while-inline-quiz" aria-label="Quick quiz">
+  <div class="viz-row">
+    <span class="text-small text-muted" id="while-inline-category">Sample questions</span>
+    <span class="text-small tabular-nums" id="while-inline-progress">1 / 8</span>
+  </div>
+  <h3 id="while-inline-question">How many hearts does an octopus have?</h3>
+  <div class="viz-grid" id="while-inline-choices" role="group" aria-labelledby="while-inline-question"></div>
+  <div id="while-inline-feedback" aria-live="polite" aria-atomic="true"></div>
+  <div class="viz-row" id="while-inline-actions">
+    <button type="button" class="btn btn-ghost" id="while-inline-skip">Skip</button>
+    <button type="button" class="btn btn-primary" id="while-inline-next" disabled>Next question</button>
+    <span class="text-small text-muted" id="while-inline-score">0 correct</span>
+  </div>
+  <script type="application/json" id="while-inline-cards">__WHILE_CARDS_JSON__</script>
+</div>
+<style>
+  #while-inline-quiz { display: grid; gap: 14px; }
+  #while-inline-quiz h3 { margin: 0; }
+  #while-inline-feedback:empty { display: none; }
+  #while-inline-feedback p { margin: 0; }
+  #while-inline-feedback p + p { margin-top: 6px; }
+  #while-inline-actions { margin-top: 2px; }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('while-inline-quiz');
+  const cards = JSON.parse(root.querySelector('#while-inline-cards').textContent);
+  const category = root.querySelector('#while-inline-category');
+  const progress = root.querySelector('#while-inline-progress');
+  const question = root.querySelector('#while-inline-question');
+  const choices = root.querySelector('#while-inline-choices');
+  const feedback = root.querySelector('#while-inline-feedback');
+  const next = root.querySelector('#while-inline-next');
+  const skip = root.querySelector('#while-inline-skip');
+  const scoreLabel = root.querySelector('#while-inline-score');
+  const deckId = JSON.stringify(cards.map(card => [card.id, card.question, card.choices, card.answerIndex]));
+  let index = 0;
+  let answers = Array(cards.length).fill(null);
+  let revision = 0;
+
+  function restore(snapshot) {
+    const saved = snapshot?.privateContent;
+    if (!saved || saved.version !== 1 || saved.deckId !== deckId || !Number.isInteger(saved.index) || saved.index < 0 || saved.index > cards.length || !Array.isArray(saved.answers) || saved.answers.length !== cards.length || !Number.isInteger(saved.revision) || saved.revision < revision) return false;
+    if (!saved.answers.every((answer, i) => answer === null || (Number.isInteger(answer) && answer >= 0 && answer < cards[i].choices.length))) return false;
+    index = saved.index;
+    answers = saved.answers.slice();
+    revision = saved.revision;
+    return true;
+  }
+
+  function totals() {
+    return {
+      correct: answers.filter((answer, i) => answer === cards[i].answerIndex).length,
+      answered: answers.filter(answer => answer !== null).length
+    };
+  }
+
+  function save() {
+    revision += 1;
+    const { correct, answered } = totals();
+    const snapshot = {
+      modelContent: { quiz: 'While sample questions', correct, answered, total: cards.length, completed: index === cards.length, currentQuestionId: cards[index]?.id ?? null },
+      privateContent: { version: 1, deckId, index, answers: answers.slice(), revision }
+    };
+    try {
+      const pending = window.openai?.setWidgetState?.(snapshot);
+      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    } catch { /* The quiz also works when host state persistence is unavailable. */ }
+  }
+
+  function addFeedback(title, detail) {
+    const lead = document.createElement('p');
+    lead.textContent = title;
+    const explanation = document.createElement('p');
+    explanation.textContent = detail;
+    feedback.replaceChildren(lead, explanation);
+  }
+
+  function render() {
+    const { correct, answered } = totals();
+    scoreLabel.textContent = `${correct} correct · ${answered} answered`;
+    choices.replaceChildren();
+    feedback.replaceChildren();
+    if (index === cards.length) {
+      category.textContent = 'Collection complete';
+      progress.textContent = `${cards.length} / ${cards.length}`;
+      question.textContent = 'A little wiser already.';
+      addFeedback(`${correct} of ${cards.length} correct`, `${answered} answered · ${cards.length - answered} skipped`);
+      skip.hidden = true;
+      next.disabled = false;
+      next.textContent = 'Practice again';
+      return;
+    }
+    const card = cards[index];
+    const selected = answers[index];
+    const answeredCard = selected !== null;
+    category.textContent = card.category;
+    progress.textContent = `${index + 1} / ${cards.length}`;
+    question.textContent = card.question;
+    skip.hidden = answeredCard;
+    next.disabled = !answeredCard;
+    next.textContent = index === cards.length - 1 ? 'See results' : 'Next question';
+    card.choices.forEach((choice, choiceIndex) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-block';
+      button.textContent = choice;
+      button.disabled = answeredCard;
+      button.setAttribute('aria-pressed', String(selected === choiceIndex));
+      if (answeredCard && choiceIndex === card.answerIndex) button.textContent += ' ✓';
+      if (answeredCard) {
+        const result = choiceIndex === card.answerIndex ? 'Correct answer' : selected === choiceIndex ? 'Your answer, incorrect' : '';
+        if (result) button.setAttribute('aria-label', `${choice}. ${result}`);
+      }
+      button.addEventListener('click', () => choose(choiceIndex));
+      choices.append(button);
+    });
+    if (answeredCard) addFeedback(selected === card.answerIndex ? 'Correct!' : `The answer is ${card.choices[card.answerIndex]}.`, card.explanation);
+  }
+
+  function choose(choiceIndex) {
+    if (index >= cards.length || answers[index] !== null || choiceIndex >= cards[index].choices.length) return;
+    answers[index] = choiceIndex;
+    save();
+    render();
+    next.focus({ preventScroll: true });
+  }
+
+  next.addEventListener('click', () => {
+    if (index === cards.length) {
+      index = 0;
+      answers = Array(cards.length).fill(null);
+    } else if (answers[index] !== null) index += 1;
+    else return;
+    save();
+    render();
+    (choices.querySelector('button') || next).focus({ preventScroll: true });
+  });
+  skip.addEventListener('click', () => {
+    if (index >= cards.length || answers[index] !== null) return;
+    index += 1;
+    save();
+    render();
+    (choices.querySelector('button') || next).focus({ preventScroll: true });
+  });
+  root.addEventListener('keydown', event => {
+    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !/^[1-4]$/.test(event.key)) return;
+    event.preventDefault();
+    choose(Number(event.key) - 1);
+  });
+  window.addEventListener('openai:set_globals', event => {
+    if (restore(event.detail?.globals?.widgetState)) render();
+  });
+  restore(window.openai?.widgetState);
+  render();
+})();
+</script>

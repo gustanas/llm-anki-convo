@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f5f0">
+    <meta name="description" content="A little learning while Codex works. A simple quiz companion for the moments in between.">
+    <title>While — a little learning in between</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23766499'/%3E%3Cpath d='M32 12v40M12 32h40M18 18l28 28M18 46l28-28' stroke='%23fff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="While home">
+          <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 3v26M3 16h26M6.8 6.8l18.4 18.4M6.8 25.2 25.2 6.8" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>
+          <span>while<span class="brand-period">.</span></span>
+        </a>
+        <div class="connection-badge" id="connection-badge"><span class="status-dot" aria-hidden="true"></span><span id="connection-label">Connecting to companion…</span></div>
+      </header>
+
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <p class="eyebrow">GOOD THINGS IN THE IN-BETWEEN</p>
+          <h1 id="page-title">A little learning.<br><span>While Codex works.</span></h1>
+          <p class="intro-copy">Give your curiosity something to do.</p>
+        </section>
+
+        <section class="learning-space" aria-label="Learning companion">
+          <div class="deck-heading"><span class="deck-label"><svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="5" y="2" width="10" height="12" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M3 5v9a2 2 0 0 0 2 2h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg> The curiosity collection</span><span class="sample-label">Sample deck</span></div>
+          <div id="quiz-root" aria-busy="true">
+            <div class="quiz-card loading-card"><span class="loading-orbit" aria-hidden="true"></span><p>Gathering a little food for thought…</p></div>
+          </div>
+          <div class="below-card"><p id="session-stats">Your progress stays in this browser.</p><p class="keyboard-hint"><kbd>1</kbd>–<kbd>4</kbd> choose <span>·</span> <kbd>↵</kbd> next</p></div>
+
+          <div class="work-strip" id="work-strip">
+            <span class="work-symbol" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="m7 6-4 4 4 4m6-8 4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m11.5 4-3 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+            <div class="work-copy"><p id="work-title">Connecting to your companion</p><p id="work-description">You can keep learning at your own pace.</p></div>
+            <button class="demo-button" id="demo-button" type="button" disabled>Try demo <span aria-hidden="true">↗</span></button>
+          </div>
+          <p class="inline-error" id="demo-error" role="alert" hidden></p>
+        </section>
+      </main>
+
+      <footer class="site-footer"><span>A moment well spent.</span><span>Sample questions today. Your Anki decks, next.</span></footer>
+    </div>
+    <p class="sr-only" id="quiz-announcement" aria-live="polite" aria-atomic="true"></p>
+    <p class="sr-only" id="work-announcement" aria-live="polite" aria-atomic="true"></p>
+    <noscript><p class="noscript-note">While needs JavaScript to show questions and task updates. Please enable it and reload.</p></noscript>
+  </body>
+</html>
