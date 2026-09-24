@@ -23,6 +23,8 @@ codex plugin add mcp-apps-probe@personal
 
 Start a new Codex task after installing or updating the plugin so its tool list refreshes. The experimental `.mcp.json` contains absolute paths to this checkout and its Node executable. Update them if the checkout moves or Node is installed elsewhere.
 
+For development in this repository, `AGENTS.md` has a `Development Auto-show mode` setting. Set it to `off` for explicit requests only, `work` to open Anki during substantive work requests, or `always` to open it on ordinary turns too. Start a new Codex task after changing the mode; this is an instruction switch for testing, not a plugin-wide setting or an immediate hook-rendered widget.
+
 ## Review cards inline
 
 Ask Codex to **show an Anki review using the MCP App**. The `show_anki_review` tool opens the widget. Choose a deck in the widget, reveal the answer, then press **Again**, **Hard**, **Good**, or **Easy**. The widget calls `rate_anki_review` directly. Once Anki confirms the grade, the next card appears in the same widget without a new chat message. The widget also uses `list_anki_decks`, `start_anki_review`, and `resume_anki_review` to manage the session quietly.

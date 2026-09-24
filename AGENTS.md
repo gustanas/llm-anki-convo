@@ -13,6 +13,12 @@ Never commit files under `dist/` or conversation visualization directories. They
 
 # MCP Apps Anki view lifecycle
 
-When the user wants Anki cards visible while you work, call `show_anki_review` as your first tool action after a brief acknowledgment. Do not delay it for planning, deck discovery, repository commands, or delegation; the widget loads the decks itself. Continue the requested work after the view opens.
+Development Auto-show mode: `work`. Change only this value to `off`, `work`, or `always` when testing a different mode in this repository. This is a Codex instruction switch, not a native plugin setting; start a new task after changing it so Codex loads the new value.
+
+- `off`: show Anki only when the user explicitly asks to see it.
+- `work`: also show Anki for substantive work requests in this repository, including coding, research, or other tool-using tasks, even when the user does not mention Anki. Skip short conversational questions and status checks.
+- `always`: also show Anki for ordinary user turns, even if they are brief questions.
+
+In every mode, an explicit request for no Anki overrides Auto-show. Never auto-show for a `While Anki rating v1:` message. When the user explicitly wants Anki or the Auto-show mode applies, call `show_anki_review` as your first tool action after a brief acknowledgment. Do not delay it for planning, deck discovery, repository commands, or delegation; the widget loads the decks itself. Continue the requested work after the view opens.
 
 When you call `show_anki_review`, retain the returned `viewId`. After your work is finished and immediately before the final answer, call `hide_anki_review` with that exact `viewId`. Do this on success or failure, and for every Anki view opened during the turn. Hiding the view must never rate a card, end its review session, or clear a pending rating. If hiding fails, say that the view could not be confirmed hidden; never claim otherwise.
