@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
@@ -9,11 +10,37 @@ import { rateReview, resumeReview, startReview, ratingName } from '../../lib/ank
 export const ANKI_RESOURCE_URI = 'ui://mcp-apps-probe/anki-review.html';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PRIVATE_OUTPUT_DIR = path.join(ROOT, 'dist');
+const DEFAULT_PREFERENCES_PATH = path.join(PRIVATE_OUTPUT_DIR, 'anki-last-deck.json');
 const HIDDEN_VIEW_TTL_MS = 60 * 60 * 1000;
 const IDLE_VIEW_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_VIEWS = 256;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const uuid = z.string().regex(UUID_V4);
+
+async function readLastUsedDeck(preferencesPath) {
+  try {
+    const saved = JSON.parse(await readFile(preferencesPath, 'utf8'));
+    return saved?.version === 1 && typeof saved.deck === 'string' && saved.deck.trim() && saved.deck.length <= 1000
+      ? saved.deck
+      : null;
+  } catch {
+    // A missing or corrupt preference must never prevent reviewing cards.
+    return null;
+  }
+}
+
+async function saveLastUsedDeck(preferencesPath, deck) {
+  if (typeof deck !== 'string' || !deck.trim() || deck.length > 1000) return false;
+  await mkdir(path.dirname(preferencesPath), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${preferencesPath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, JSON.stringify({ version: 1, deck }), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    await rename(temporaryPath, preferencesPath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+  return true;
+}
 
 function success(structuredContent, message) {
   return { content: [{ type: 'text', text: message }], structuredContent };
@@ -37,6 +64,7 @@ async function asToolResult(action) {
 export function registerAnkiReviewTools(server, {
   clientFactory = createAnkiConnect,
   outputDir = PRIVATE_OUTPUT_DIR,
+  preferencesPath = DEFAULT_PREFERENCES_PATH,
   reviewApi = { startReview, resumeReview, rateReview },
   now = Date.now,
   maxViews = MAX_VIEWS,
@@ -44,6 +72,16 @@ export function registerAnkiReviewTools(server, {
   // A view is the particular widget instance attached to one show_anki_review
   // result. Hiding it must not alter the Anki review session it may display.
   const views = new Map();
+
+  async function rememberDeck(result) {
+    try {
+      await saveLastUsedDeck(preferencesPath, result?.view?.deck);
+    } catch {
+      // A preference write is secondary to the Anki operation. In particular,
+      // a saved rating must never be reported as failed because this write failed.
+      result.warnings = [...(result.warnings ?? []), 'Could not remember the last used deck.'];
+    }
+  }
 
   function pruneViews(at = now()) {
     for (const [id, state] of views) {
@@ -112,11 +150,12 @@ export function registerAnkiReviewTools(server, {
     title: 'List Anki decks',
     description: 'List decks from the local Anki app.',
     inputSchema: z.object({}).strict(),
-    outputSchema: z.object({ decks: z.array(z.string()) }),
+    outputSchema: z.object({ decks: z.array(z.string()), lastUsedDeck: z.string().nullable() }),
     _meta: { ui: { visibility: ['app'] } },
   }, async () => asToolResult(async () => {
     const decks = await clientFactory({ reviewWrites: false }).deckNames();
-    return success({ decks }, `${decks.length} Anki deck(s) available.`);
+    const savedDeck = await readLastUsedDeck(preferencesPath);
+    return success({ decks, lastUsedDeck: decks.includes(savedDeck) ? savedDeck : null }, `${decks.length} Anki deck(s) available.`);
   }));
 
   registerAppTool(server, 'start_anki_review', {
@@ -127,6 +166,7 @@ export function registerAnkiReviewTools(server, {
     _meta: { ui: { visibility: ['app'] } },
   }, async ({ deck, skipIdentical }) => asToolResult(async () => {
     const result = await reviewApi.startReview({ client: clientFactory({ reviewWrites: false }), deck, outputDir, skipIdentical });
+    await rememberDeck(result);
     return success({ view: result.view, warnings: result.warnings }, result.view.done ? 'No due or new cards are available.' : 'Review card ready.');
   }));
 
@@ -138,6 +178,7 @@ export function registerAnkiReviewTools(server, {
     _meta: { ui: { visibility: ['app'] } },
   }, async ({ sessionId }) => asToolResult(async () => {
     const result = await reviewApi.resumeReview({ client: clientFactory({ reviewWrites: false }), sessionId });
+    await rememberDeck(result);
     return success({ view: result.view, warnings: result.warnings }, result.view.done ? 'Review session complete.' : 'Review card ready.');
   }));
 
@@ -155,6 +196,7 @@ export function registerAnkiReviewTools(server, {
   }, async ({ sessionId, cardId, nonce, ease }) => asToolResult(async () => {
     const result = await reviewApi.rateReview({ client: clientFactory({ reviewWrites: true }), sessionId, cardId, nonce, ease });
     if (result?.recorded !== true || !result.view) throw new Error('Anki did not confirm the new review. Keep this card and retry the same rating.');
+    await rememberDeck(result);
     return success({ recorded: true, rating: ratingName(ease), view: result.view, warnings: result.warnings }, `Saved ${ratingName(ease)} in Anki.`);
   }));
 }

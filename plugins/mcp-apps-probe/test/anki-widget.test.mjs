@@ -115,6 +115,30 @@ const card = (id, question, answer) => ({
 const ok = (structuredContent) => ({ content: [], structuredContent });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+test('preselects the last used deck without starting a review and preserves user choice on refresh', async () => {
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['French', 'Japanese'], lastUsedDeck: 'Japanese' }),
+  });
+  await tick();
+  assert.equal(ui.node('deck-select').value, 'Japanese');
+  assert.deepEqual(ui.calls.map((item) => item.name), ['list_anki_decks']);
+
+  ui.node('deck-select').value = 'French';
+  ui.node('refresh-decks').click();
+  await tick();
+  assert.equal(ui.node('deck-select').value, 'French');
+  assert.deepEqual(ui.calls.map((item) => item.name), ['list_anki_decks', 'list_anki_decks']);
+});
+
+test('ignores a remembered deck that is no longer in the available deck list', async () => {
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['French', 'Japanese'], lastUsedDeck: 'Deleted deck' }),
+  });
+  await tick();
+  assert.equal(ui.node('deck-select').value, 'French');
+  assert.equal(ui.node('start-review').disabled, false);
+});
+
 test('reveals locally and advances only after a quiet Anki rating is confirmed', async () => {
   let resolveRate;
   const rateResult = new Promise((resolve) => { resolveRate = resolve; });

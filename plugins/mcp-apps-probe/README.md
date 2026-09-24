@@ -27,6 +27,8 @@ Start a new Codex task after installing or updating the plugin so its tool list 
 
 Ask Codex to **show an Anki review using the MCP App**. The `show_anki_review` tool opens the widget. Choose a deck in the widget, reveal the answer, then press **Again**, **Hard**, **Good**, or **Easy**. The widget calls `rate_anki_review` directly. Once Anki confirms the grade, the next card appears in the same widget without a new chat message. The widget also uses `list_anki_decks`, `start_anki_review`, and `resume_anki_review` to manage the session quietly.
 
+The deck selector preselects the last deck you used when it is still available in Anki. This preference is saved privately on this computer; opening the view does not start reviewing or grade a card.
+
 When Codex finishes the work for which it showed the view, it calls `hide_anki_review` with that view's ID. The widget checks its own visibility state, clears card content, and asks the host to close it. If the host declines to remove the iframe, the widget collapses itself. Hiding does not grade a card, delete the review session, or discard a pending rating. The repository's `AGENTS.md` instructs Codex to send this hide signal before each final answer after opening a view.
 
 The session considers every available **due and new** card, including cards beyond Anki's daily cap. It loads cards one at a time and has no fixed review-count limit. Future, suspended, and buried cards are excluded. Anki supplies the rating intervals and records the actual review. This is not a copy-only practice quiz: pressing a rating changes the card's Anki scheduling.

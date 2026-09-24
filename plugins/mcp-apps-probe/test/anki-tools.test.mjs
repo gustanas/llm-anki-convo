@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport, McpServer } from '@modelcontextprotocol/server';
 import { ANKI_RESOURCE_URI, registerAnkiReviewTools } from '../anki-tools.mjs';
@@ -11,6 +14,8 @@ const firstView = { version: 1, sessionId: SESSION, deck: 'Languages', reviewed:
 const doneView = { ...firstView, reviewed: 1, done: true, card: null, cardId: null, nonce: null, intervals: [], remaining: 0 };
 
 test('Anki widget tools keep card data and simulated ratings in direct app calls', async () => {
+  const temporaryDir = await mkdtemp(path.join(tmpdir(), 'anki-deck-test-'));
+  const preferencesPath = path.join(temporaryDir, 'last-deck.json');
   const calls = [];
   const server = new McpServer({ name: 'anki-widget-tools-test', version: '0.1.0' });
   registerAnkiReviewTools(server, {
@@ -19,6 +24,7 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
       deckNames: async () => ['Languages'],
     }),
     outputDir: '/private/ignored/dist',
+    preferencesPath,
     reviewApi: {
       startReview: async (args) => { calls.push(['start', args]); return { path: '/private/ignored/dist/card.html', view: firstView, warnings: [] }; },
       resumeReview: async (args) => { calls.push(['resume', args]); return { path: '/private/ignored/dist/card.html', view: firstView, warnings: [] }; },
@@ -40,13 +46,16 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
     assert.equal(calls.length, 0, 'Launching the widget does not access or grade Anki.');
 
     const decks = await client.callTool({ name: 'list_anki_decks', arguments: {} });
-    assert.deepEqual(decks.structuredContent, { decks: ['Languages'] });
+    assert.deepEqual(decks.structuredContent, { decks: ['Languages'], lastUsedDeck: null });
 
     const started = await client.callTool({ name: 'start_anki_review', arguments: { deck: 'Languages' } });
     assert.equal(started.structuredContent.view.card.answer, 'Back');
     assert.equal(started.structuredContent.view.nonce, NONCE);
     assert.equal(JSON.stringify(started.structuredContent).includes('/private/ignored'), false, 'Private output paths stay on the server.');
     assert.equal(calls[0][1].client.reviewWrites, false);
+    assert.deepEqual((await client.callTool({ name: 'list_anki_decks', arguments: {} })).structuredContent, {
+      decks: ['Languages'], lastUsedDeck: 'Languages',
+    });
 
     const resumed = await client.callTool({ name: 'resume_anki_review', arguments: { sessionId: SESSION } });
     assert.equal(resumed.structuredContent.view.cardId, 42);
@@ -60,6 +69,106 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
     assert.equal(calls[2][1].nonce, NONCE);
   } finally {
     await Promise.all([client.close(), server.close()]);
+    await rm(temporaryDir, { recursive: true, force: true });
+  }
+});
+
+test('last used deck survives server restart and changes only after successful review actions', async () => {
+  const temporaryDir = await mkdtemp(path.join(tmpdir(), 'anki-deck-test-'));
+  const preferencesPath = path.join(temporaryDir, 'private', 'last-deck.json');
+  const decks = ['Languages', 'Science', 'Music'];
+  let failStart = false;
+  let failResume = false;
+  let confirmRating = false;
+  const server = new McpServer({ name: 'anki-deck-preference-test', version: '0.1.0' });
+  registerAnkiReviewTools(server, {
+    preferencesPath,
+    clientFactory: () => ({ deckNames: async () => decks }),
+    reviewApi: {
+      startReview: async ({ deck }) => {
+        if (failStart) throw new Error('Could not start.');
+        return { view: { ...firstView, deck }, warnings: [] };
+      },
+      resumeReview: async () => {
+        if (failResume) throw new Error('Could not resume.');
+        return { view: { ...firstView, deck: 'Science' }, warnings: [] };
+      },
+      rateReview: async () => ({ recorded: confirmRating, view: { ...firstView, deck: 'Music' }, warnings: [] }),
+    },
+  });
+  const client = new Client({ name: 'anki-deck-preference-client', version: '0.1.0' });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  const list = async () => (await client.callTool({ name: 'list_anki_decks', arguments: {} })).structuredContent.lastUsedDeck;
+  try {
+    assert.equal(await list(), null);
+    await client.callTool({ name: 'start_anki_review', arguments: { deck: 'Languages' } });
+    assert.equal(await list(), 'Languages');
+    assert.deepEqual(JSON.parse(await readFile(preferencesPath, 'utf8')), { version: 1, deck: 'Languages' });
+    assert.equal((await stat(preferencesPath)).mode & 0o777, 0o600);
+
+    failStart = true;
+    assert.equal((await client.callTool({ name: 'start_anki_review', arguments: { deck: 'Music' } })).isError, true);
+    assert.equal(await list(), 'Languages');
+
+    await client.callTool({ name: 'resume_anki_review', arguments: { sessionId: SESSION } });
+    assert.equal(await list(), 'Science');
+    failResume = true;
+    assert.equal((await client.callTool({ name: 'resume_anki_review', arguments: { sessionId: SESSION } })).isError, true);
+    assert.equal(await list(), 'Science');
+
+    const ratingArgs = { sessionId: SESSION, cardId: 42, nonce: NONCE, ease: 3 };
+    assert.equal((await client.callTool({ name: 'rate_anki_review', arguments: ratingArgs })).isError, true);
+    assert.equal(await list(), 'Science');
+    confirmRating = true;
+    assert.equal((await client.callTool({ name: 'rate_anki_review', arguments: ratingArgs })).structuredContent.recorded, true);
+    assert.equal(await list(), 'Music');
+  } finally {
+    await Promise.all([client.close(), server.close()]);
+  }
+
+  const restartedServer = new McpServer({ name: 'anki-deck-restart-test', version: '0.1.0' });
+  registerAnkiReviewTools(restartedServer, { preferencesPath, clientFactory: () => ({ deckNames: async () => decks }) });
+  const restartedClient = new Client({ name: 'anki-deck-restart-client', version: '0.1.0' });
+  const [restartedServerTransport, restartedClientTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([restartedServer.connect(restartedServerTransport), restartedClient.connect(restartedClientTransport)]);
+  try {
+    const listRestarted = async () => (await restartedClient.callTool({ name: 'list_anki_decks', arguments: {} })).structuredContent.lastUsedDeck;
+    assert.equal(await listRestarted(), 'Music');
+    await writeFile(preferencesPath, '{broken json', 'utf8');
+    assert.equal(await listRestarted(), null, 'Malformed preferences are ignored.');
+    await writeFile(preferencesPath, JSON.stringify({ version: 1, deck: 'Deleted deck' }), 'utf8');
+    assert.equal(await listRestarted(), null, 'A deleted deck is not offered as the default.');
+  } finally {
+    await Promise.all([restartedClient.close(), restartedServer.close()]);
+    await rm(temporaryDir, { recursive: true, force: true });
+  }
+});
+
+test('a preference write failure does not hide an Anki-confirmed rating', async () => {
+  const temporaryDir = await mkdtemp(path.join(tmpdir(), 'anki-deck-test-'));
+  const server = new McpServer({ name: 'anki-deck-write-failure-test', version: '0.1.0' });
+  registerAnkiReviewTools(server, {
+    preferencesPath: temporaryDir, // An existing directory cannot be replaced by the preference file.
+    clientFactory: () => ({}),
+    reviewApi: {
+      rateReview: async () => ({ recorded: true, view: firstView, warnings: [] }),
+    },
+  });
+  const client = new Client({ name: 'anki-deck-write-failure-client', version: '0.1.0' });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  try {
+    const graded = await client.callTool({
+      name: 'rate_anki_review',
+      arguments: { sessionId: SESSION, cardId: 42, nonce: NONCE, ease: 3 },
+    });
+    assert.equal(graded.isError, undefined);
+    assert.equal(graded.structuredContent.recorded, true);
+    assert.match(graded.structuredContent.warnings.join(' '), /Could not remember the last used deck/);
+  } finally {
+    await Promise.all([client.close(), server.close()]);
+    await rm(temporaryDir, { recursive: true, force: true });
   }
 });
 

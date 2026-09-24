@@ -194,7 +194,7 @@ async function loadDecks() {
   renderControls();
   message('Loading Anki decks…');
   try {
-    const { decks } = await call('list_anki_decks', {});
+    const { decks, lastUsedDeck } = await call('list_anki_decks', {});
     if (dismissed) return;
     if (!Array.isArray(decks) || !decks.every((deck) => typeof deck === 'string')) {
       throw new Error('Anki returned an invalid deck list.');
@@ -208,6 +208,9 @@ async function loadDecks() {
       el('deck-select').append(option);
     }
     if (decks.includes(selected)) el('deck-select').value = selected;
+    else if (typeof lastUsedDeck === 'string' && decks.includes(lastUsedDeck)) {
+      el('deck-select').value = lastUsedDeck;
+    }
     message(decks.length ? 'Choose a deck to start.' : 'No Anki decks found. Import a deck, then refresh.');
   } catch (error) {
     message(`Could not load Anki decks: ${error.message ?? String(error)} Open Anki, then refresh.`, true);
