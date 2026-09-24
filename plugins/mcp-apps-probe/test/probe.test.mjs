@@ -28,6 +28,7 @@ test('counter tool returns updated state and an MCP Apps resource without touchi
     assert.doesNotMatch(resource.contents[0].text, /sendFollowUpMessage|AnkiConnect|answerCards/);
     const ankiResource = await client.readResource({ uri: ANKI_RESOURCE_URI });
     assert.equal(ankiResource.contents[0].mimeType, 'text/html;profile=mcp-app');
+    assert.equal(ankiResource.contents[0]._meta['openai/widgetMinFrameHeight'], 1);
     assert.doesNotMatch(ankiResource.contents[0].text, /__ANKI_BUNDLE__/);
     assert.match(ankiResource.contents[0].text, /Show answer/);
   } finally {

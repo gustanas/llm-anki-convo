@@ -56,7 +56,14 @@ export function createProbeServer() {
       readFile(path.join(HERE, 'dist', 'anki-widget.js'), 'utf8'),
     ]);
     const html = template.replace('__ANKI_BUNDLE__', () => bundle.replaceAll('</script', '<\\/script'));
-    return { contents: [{ uri: ANKI_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }] };
+    return {
+      contents: [{
+        uri: ANKI_RESOURCE_URI,
+        mimeType: RESOURCE_MIME_TYPE,
+        text: html,
+        _meta: { 'openai/widgetMinFrameHeight': 1 },
+      }],
+    };
   });
 
   return server;
