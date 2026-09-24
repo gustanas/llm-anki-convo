@@ -11,7 +11,7 @@ export const RESOURCE_URI = 'ui://mcp-apps-probe/counter.html';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export function createProbeServer() {
-  const server = new McpServer({ name: 'mcp-apps-probe', version: '0.1.0' });
+  const server = new McpServer({ name: 'While Anki', version: '0.1.0' });
   let count = 0;
 
   registerAnkiReviewTools(server);

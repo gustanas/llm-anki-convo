@@ -7,14 +7,17 @@ const html = await readFile(new URL('../anki-widget.html', import.meta.url), 'ut
 const script = (await readFile(new URL('../src/anki-widget.js', import.meta.url), 'utf8'))
   .replace("import { App } from '@modelcontextprotocol/ext-apps';", 'const App = globalThis.MockApp;');
 
-function mount(handlers, storage = new Map(), { viewId } = {}) {
+function mount(handlers, storage = new Map(), { viewId, hostClose = false } = {}) {
   const nodes = new Map();
   const calls = [];
   const sizes = [];
   const timers = new Map();
   let nextTimer = 1;
   let teardownRequests = 0;
+  let closeRequests = 0;
   let instance;
+  const body = { style: {} };
+  const documentElement = { style: {} };
 
   class Element {
     constructor(tagName) {
@@ -75,8 +78,10 @@ function mount(handlers, storage = new Map(), { viewId } = {}) {
     document: {
       getElementById: (id) => nodes.get(id),
       createElement: (tag) => new Element(tag),
-      body: { style: {} },
+      body,
+      documentElement,
     },
+    window: { openai: hostClose ? { requestClose: () => { closeRequests++; } } : undefined },
     setInterval: (callback, ms) => {
       const id = nextTimer++;
       timers.set(id, { callback, ms });
@@ -93,6 +98,8 @@ function mount(handlers, storage = new Map(), { viewId } = {}) {
   return {
     node: (id) => nodes.get(id), calls, storage, sizes,
     teardownRequests: () => teardownRequests,
+    closeRequests: () => closeRequests,
+    body, documentElement,
     poll: () => { for (const timer of timers.values()) timer.callback(); },
     timerCount: () => timers.size,
     emitResult: (result) => instance.ontoolresult?.(result),
@@ -254,7 +261,7 @@ test('a hidden view clears the card, preserves its review session, and requests 
     get_anki_view_state: ({ viewId: requested }) => ok({ viewId: requested, hidden }),
     list_anki_decks: () => ok({ decks: ['Japanese'] }),
     start_anki_review: () => ok({ view: first }),
-  }, storage, { viewId });
+  }, storage, { viewId, hostClose: true });
   await tick();
   ui.node('start-review').click();
   await tick();
@@ -271,8 +278,11 @@ test('a hidden view clears the card, preserves its review session, and requests 
   assert.equal(ui.node('question-media').children.length, 0);
   assert.equal(ui.node('rating-row').children.length, 0);
   assert.equal(ui.timerCount(), 0);
+  assert.equal(ui.closeRequests(), 1);
   assert.equal(ui.teardownRequests(), 1);
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.sizes)), [{ width: 0, height: 0 }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.sizes)), [{ height: 1 }]);
+  assert.equal(ui.body.style.height, '1px');
+  assert.equal(ui.documentElement.style.height, '1px');
   assert.equal(storage.get('while-anki-mcp-session-id'), first.sessionId);
   assert.equal(ui.calls.filter((call) => call.name === 'rate_anki_review').length, 0, 'Hiding never grades a card.');
 });

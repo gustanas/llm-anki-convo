@@ -334,10 +334,25 @@ function dismiss() {
   el('status').textContent = '';
   el('review-root').hidden = true;
   document.body.style.padding = '0';
-  try { void app.sendSizeChanged({ width: 0, height: 0 }).catch(() => {}); }
-  catch { /* The hidden root still collapses if the host declines resize. */ }
+  document.body.style.height = '1px';
+  document.body.style.minHeight = '1px';
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.height = '1px';
+  document.documentElement.style.minHeight = '1px';
+  document.documentElement.style.overflow = 'hidden';
+  // Some hosts ignore a zero-size notification. Keep the SDK's automatic
+  // resize measurement and this explicit notification at the same tiny size.
+  try { void app.sendSizeChanged({ height: 1 }).catch(() => {}); }
+  catch { /* The host may decline resize. */ }
+  // ChatGPT exposes a stronger optional close request. Feature-detect it so
+  // portable MCP Apps hosts can continue using the standard teardown signal.
+  try {
+    if (typeof window !== 'undefined' && typeof window.openai?.requestClose === 'function') {
+      void Promise.resolve(window.openai.requestClose()).catch(() => {});
+    }
+  } catch { /* The standard teardown request below still runs. */ }
   try { void app.requestTeardown().catch(() => {}); }
-  catch { /* The hidden root still collapses if the host declines teardown. */ }
+  catch { /* The hidden root stays collapsed if the host declines teardown. */ }
 }
 
 async function checkVisibility() {

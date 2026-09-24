@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { createAnkiConnect } from '../../lib/anki-connect.mjs';
 import { rateReview, resumeReview, startReview, ratingName } from '../../lib/anki-review.mjs';
 
-export const ANKI_RESOURCE_URI = 'ui://mcp-apps-probe/anki-review.html';
+export const ANKI_RESOURCE_URI = 'ui://mcp-apps-probe/anki-review-v2.html';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PRIVATE_OUTPUT_DIR = path.join(ROOT, 'dist');
 const DEFAULT_PREFERENCES_PATH = path.join(PRIVATE_OUTPUT_DIR, 'anki-last-deck.json');
