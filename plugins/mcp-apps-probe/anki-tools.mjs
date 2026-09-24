@@ -100,7 +100,7 @@ export function registerAnkiReviewTools(server, {
 
   registerAppTool(server, 'show_anki_review', {
     title: 'Show Anki review',
-    description: 'Display an inline Anki review. The widget reads decks and records ratings through direct MCP Apps server calls, without posting each grade to chat.',
+    description: 'Display an inline Anki review. When the user wants cards visible while you work, call this as your first tool action. Retain the returned viewId and call hide_anki_review before your final answer. The widget handles decks and ratings directly without chat messages.',
     inputSchema: z.object({}).strict(),
     outputSchema: z.object({ status: z.literal('ready'), viewId: uuid }),
     _meta: { ui: { resourceUri: ANKI_RESOURCE_URI } },
