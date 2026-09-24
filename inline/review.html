@@ -19,6 +19,7 @@
 </section>
 <style>
   #while-anki-review { display: grid; gap: 14px; }
+  #while-anki-review [hidden] { display: none !important; }
   #while-anki-review h3, #while-anki-review p { margin: 0; overflow-wrap: anywhere; }
   #while-review-question, #while-review-answer-text { white-space: pre-wrap; }
   #while-anki-review .while-review-media { display: grid; gap: 12px; }
@@ -117,14 +118,17 @@
           status.textContent = 'Codex review actions are unavailable here. Your rating was not saved.';
           return;
         }
+        if (globalThis.navigator?.userActivation?.isActive === false) {
+          status.textContent = 'Codex did not recognize this click. Your rating was not saved; click the button again.';
+          return;
+        }
         sending = true;
-        status.textContent = `Saving ${label} in Anki…`;
-        save();
+        status.textContent = `Requesting ${label} in Anki…`;
         render();
-        const prompt = `While Anki rating v1: session=${data.sessionId} card=${data.cardId} nonce=${data.nonce} ease=${index + 1}. Save this user-selected rating in Anki using the repository review command, then show the next inline card at the chat end. If saving fails, say so and leave this card active.`;
+        const prompt = `While Anki rating v1: session=${data.sessionId} card=${data.cardId} nonce=${data.nonce} ease=${index + 1}`;
         try {
-          await window.openai.sendFollowUpMessage({ prompt, scrollToBottom: true });
-          status.textContent = 'Sent to Codex for saving…';
+          await window.openai.sendFollowUpMessage({ prompt, title: `Save ${label} in Anki` });
+          status.textContent = 'Rating requested. Anki has not confirmed it yet; wait for the next card in chat.';
         } catch {
           sending = false;
           status.textContent = 'Could not send the rating. Try again; nothing was saved.';

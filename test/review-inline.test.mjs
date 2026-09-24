@@ -7,7 +7,7 @@ const template = await readFile(new URL('../inline/review.html', import.meta.url
 const source = [...template.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
   .find(([, attributes]) => !/type="application\/json"/i.test(attributes))[2];
 
-function mount(data, { followUp = async () => {}, saved } = {}) {
+function mount(data, { followUp = async () => {}, saved, activation } = {}) {
   const nodes = new Map();
   const prompts = [];
   const writes = [];
@@ -41,7 +41,7 @@ function mount(data, { followUp = async () => {}, saved } = {}) {
       async sendFollowUpMessage(value) { prompts.push(value); await followUp(value); },
     },
   };
-  runInNewContext(source, { document: { getElementById: (id) => nodes.get(id), createElement: (tag) => new Element(tag) }, window }, { timeout: 1000 });
+  runInNewContext(source, { document: { getElementById: (id) => nodes.get(id), createElement: (tag) => new Element(tag) }, window, navigator: { userActivation: activation === undefined ? undefined : { isActive: activation } } }, { timeout: 1000 });
   return { node: (id) => nodes.get(`while-review-${id}`), prompts, writes };
 }
 
@@ -68,8 +68,8 @@ test('reveal shows the actual answer, then one rating requests one Anki save', a
   assert.equal(app.node('ratings').children[2].textContent, 'Good · 10m');
   await app.node('ratings').children[2].click();
   assert.equal(app.prompts.length, 1);
-  assert.match(app.prompts[0].prompt, /session=e5784ea8-6592-47a8-9a2e-9bbf0886b0e4 card=42 nonce=87aa734a-baf6-4e89-8205-3491bfa53b66 ease=3/);
-  assert.equal(app.prompts[0].scrollToBottom, true);
+  assert.equal(app.prompts[0].prompt, 'While Anki rating v1: session=e5784ea8-6592-47a8-9a2e-9bbf0886b0e4 card=42 nonce=87aa734a-baf6-4e89-8205-3491bfa53b66 ease=3');
+  assert.equal(app.prompts[0].title, 'Save Good in Anki');
   await app.node('ratings').children[2].click();
   assert.equal(app.prompts.length, 1, 'Repeat clicks cannot send another grade.');
   assert.equal(app.node('ratings').children[2].disabled, true);
@@ -82,6 +82,15 @@ test('an unavailable follow-up action never claims the grade was saved', async (
   await app.node('ratings').children[0].click();
   assert.equal(app.node('ratings').children[0].disabled, false);
   assert.match(app.node('status').textContent, /nothing was saved/);
+});
+
+test('an untrusted click is reported instead of silently claiming a save request', async () => {
+  const app = mount(view, { activation: false });
+  await app.node('reveal').click();
+  await app.node('ratings').children[2].click();
+  assert.equal(app.prompts.length, 0);
+  assert.match(app.node('status').textContent, /not saved/);
+  assert.equal(app.node('ratings').children[2].disabled, false);
 });
 
 test('completed session renders no rating buttons', () => {
