@@ -1,6 +1,6 @@
 {
   "name": "mcp-apps-probe",
-  "version": "0.1.0+codex.20260924105304",
+  "version": "0.1.0+codex.20260924111241",
   "description": "MCP Apps probe and quiet inline Anki reviews for Codex desktop.",
   "author": {
     "name": "Local developer"

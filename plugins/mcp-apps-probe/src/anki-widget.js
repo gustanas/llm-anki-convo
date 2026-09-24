@@ -2,6 +2,7 @@ import { App } from '@modelcontextprotocol/ext-apps';
 
 const app = new App({ name: 'While Anki review', version: '0.1.0' });
 const elements = Object.fromEntries([
+  'review-root',
   'deck-panel', 'deck-select', 'start-review', 'resume-review', 'refresh-decks', 'card-panel',
   'deck-name', 'progress', 'question', 'question-media', 'answer', 'answer-text',
   'answer-media', 'reveal-row', 'reveal-answer', 'rating-row', 'choose-deck', 'reload-card', 'status',
@@ -12,6 +13,7 @@ const imageSource = /^data:image\/(?:png|jpeg|gif|webp);base64,(?=[A-Za-z0-9+/])
 const audioSource = /^data:audio\/(?:mpeg|mp3|ogg|wav|mp4|aac|flac);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const sessionKey = 'while-anki-mcp-session-id';
 const pendingKey = 'while-anki-mcp-pending-v1';
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 let connected = false;
 let busy = false;
@@ -19,8 +21,13 @@ let view = null;
 let revealed = false;
 let pendingRating = null;
 let awaitingNextCard = false;
+let viewId = null;
+let visibilityTimer = null;
+let checkingVisibility = false;
+let dismissed = false;
 
 function message(text, error = false) {
+  if (dismissed) return;
   el('status').textContent = text;
   el('status').dataset.error = String(error);
 }
@@ -132,6 +139,7 @@ function renderRatings() {
 }
 
 function renderControls() {
+  if (dismissed) return;
   const active = view !== null;
   el('deck-panel').hidden = active;
   el('card-panel').hidden = !active;
@@ -153,6 +161,7 @@ function renderControls() {
 }
 
 function paintView() {
+  if (dismissed) return;
   el('deck-name').textContent = view.deck;
   el('progress').textContent = `${view.reviewed} saved${view.remaining === null ? '' : ` · ${view.remaining} available`}`;
   el('question').textContent = view.done ? 'No due or new cards remain.' : view.card.question;
@@ -174,17 +183,19 @@ function acceptView(next) {
   awaitingNextCard = false;
   rememberSession(view.sessionId);
   rememberPending(null);
+  if (dismissed) { view = null; return; }
   paintView();
   message(view.done ? `${view.reviewed} reviews saved in Anki. This deck is clear for now.` : 'Reveal the answer, then choose an Anki rating.');
 }
 
 async function loadDecks() {
-  if (!connected || busy) return;
+  if (!connected || busy || dismissed) return;
   busy = true;
   renderControls();
   message('Loading Anki decks…');
   try {
     const { decks } = await call('list_anki_decks', {});
+    if (dismissed) return;
     if (!Array.isArray(decks) || !decks.every((deck) => typeof deck === 'string')) {
       throw new Error('Anki returned an invalid deck list.');
     }
@@ -208,7 +219,7 @@ async function loadDecks() {
 
 async function start() {
   const deck = el('deck-select').value;
-  if (!connected || busy || !deck) return;
+  if (!connected || busy || !deck || dismissed) return;
   busy = true;
   renderControls();
   message('Finding the next due or new card…');
@@ -224,7 +235,7 @@ async function start() {
 }
 
 async function resume(sessionId) {
-  if (!connected || busy || !sessionId) return;
+  if (!connected || busy || !sessionId || dismissed) return;
   busy = true;
   renderControls();
   message('Restoring your Anki review…');
@@ -240,7 +251,7 @@ async function resume(sessionId) {
 }
 
 async function rate(ease) {
-  if (!connected || busy || !view || view.done || !revealed ||
+  if (!connected || busy || dismissed || !view || view.done || !revealed ||
       !Number.isInteger(ease) || ease < 1 || ease > 4 ||
       (pendingRating && pendingRating.ease !== ease)) return;
   const args = pendingRating?.args ?? {
@@ -277,13 +288,13 @@ el('refresh-decks').addEventListener('click', () => void loadDecks());
 el('start-review').addEventListener('click', () => void start());
 el('resume-review').addEventListener('click', () => void resume(rememberedSession()));
 el('reveal-answer').addEventListener('click', () => {
-  if (!view || view.done || busy || revealed) return;
+  if (!view || view.done || busy || revealed || dismissed) return;
   revealed = true;
   renderControls();
   el('rating-row').querySelector('button')?.focus({ preventScroll: true });
 });
 el('choose-deck').addEventListener('click', () => {
-  if (busy || pendingRating) return;
+  if (busy || pendingRating || dismissed) return;
   rememberSession(null);
   rememberPending(null);
   view = null;
@@ -293,9 +304,65 @@ el('choose-deck').addEventListener('click', () => {
   message('Choose a deck to start.');
 });
 el('reload-card').addEventListener('click', () => {
-  if (!view || busy || pendingRating) return;
+  if (!view || busy || pendingRating || dismissed) return;
   void resume(view.sessionId);
 });
+
+function stopVisibilityChecks() {
+  if (visibilityTimer !== null) clearInterval(visibilityTimer);
+  visibilityTimer = null;
+}
+
+function dismiss() {
+  if (dismissed) return;
+  dismissed = true;
+  stopVisibilityChecks();
+  // Only the displayed content is removed. The session and any exact pending
+  // rating remain in sessionStorage so a later widget can recover safely.
+  view = null;
+  el('question').textContent = '';
+  el('answer-text').textContent = '';
+  el('deck-name').textContent = '';
+  el('progress').textContent = '';
+  el('question-media').replaceChildren();
+  el('answer-media').replaceChildren();
+  el('rating-row').replaceChildren();
+  el('deck-select').replaceChildren();
+  el('status').textContent = '';
+  el('review-root').hidden = true;
+  document.body.style.padding = '0';
+  try { void app.sendSizeChanged({ width: 0, height: 0 }).catch(() => {}); }
+  catch { /* The hidden root still collapses if the host declines resize. */ }
+  try { void app.requestTeardown().catch(() => {}); }
+  catch { /* The hidden root still collapses if the host declines teardown. */ }
+}
+
+async function checkVisibility() {
+  if (!connected || !viewId || dismissed || checkingVisibility) return;
+  checkingVisibility = true;
+  try {
+    const state = await call('get_anki_view_state', { viewId });
+    if (state.viewId === viewId && state.hidden === true) dismiss();
+  } catch { /* A transient check failure should not interrupt a review. */ }
+  finally { checkingVisibility = false; }
+}
+
+function startVisibilityChecks() {
+  if (!connected || !viewId || dismissed || visibilityTimer !== null) return;
+  void checkVisibility();
+  visibilityTimer = setInterval(() => void checkVisibility(), 1500);
+}
+
+// The initial show_anki_review result supplies an identifier for this widget
+// instance. Keep this listener in place before connecting to the host.
+app.ontoolresult = (result) => {
+  const data = result?.structuredContent;
+  if (data?.status !== 'ready' || typeof data.viewId !== 'string' ||
+      !uuid.test(data.viewId) || viewId !== null) return;
+  viewId = data.viewId;
+  startVisibilityChecks();
+};
+app.onteardown = async () => { stopVisibilityChecks(); return {}; };
 
 app.onerror = (error) => message(`Host error: ${error.message ?? String(error)}`, true);
 
@@ -307,7 +374,9 @@ async function connect() {
       return;
     }
     connected = true;
+    startVisibilityChecks();
     renderControls();
+    if (dismissed) return;
     if (restorePending()) return;
     await loadDecks();
     const sessionId = rememberedSession();

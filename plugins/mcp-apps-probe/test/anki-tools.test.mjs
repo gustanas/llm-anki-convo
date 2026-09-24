@@ -35,7 +35,8 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
       assert.deepEqual(listed.tools.find((tool) => tool.name === name)._meta.ui.visibility, ['app']);
     }
     const launch = await client.callTool({ name: 'show_anki_review', arguments: {} });
-    assert.deepEqual(launch.structuredContent, { status: 'ready' });
+    assert.equal(launch.structuredContent.status, 'ready');
+    assert.match(launch.structuredContent.viewId, /^[0-9a-f-]{36}$/i);
     assert.equal(calls.length, 0, 'Launching the widget does not access or grade Anki.');
 
     const decks = await client.callTool({ name: 'list_anki_decks', arguments: {} });
@@ -57,6 +58,88 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
     assert.equal(calls[2][1].client.reviewWrites, true);
     assert.equal(calls[2][1].ease, 3);
     assert.equal(calls[2][1].nonce, NONCE);
+  } finally {
+    await Promise.all([client.close(), server.close()]);
+  }
+});
+
+test('hiding one view is idempotent and leaves other views and Anki untouched', async () => {
+  let ankiCalls = 0;
+  const server = new McpServer({ name: 'anki-view-state-test', version: '0.1.0' });
+  registerAnkiReviewTools(server, {
+    clientFactory: () => { ankiCalls++; throw new Error('Anki should not be accessed.'); },
+    reviewApi: {
+      startReview: async () => { ankiCalls++; throw new Error('Review should not start.'); },
+      resumeReview: async () => { ankiCalls++; throw new Error('Review should not resume.'); },
+      rateReview: async () => { ankiCalls++; throw new Error('Review should not be graded.'); },
+    },
+  });
+  const client = new Client({ name: 'anki-view-state-test-client', version: '0.1.0' });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  try {
+    const tools = await client.listTools();
+    assert.deepEqual(tools.tools.find((tool) => tool.name === 'get_anki_view_state')._meta.ui.visibility, ['app']);
+    assert.equal(tools.tools.find((tool) => tool.name === 'hide_anki_review')._meta?.ui?.visibility, undefined);
+
+    const first = (await client.callTool({ name: 'show_anki_review', arguments: {} })).structuredContent.viewId;
+    const second = (await client.callTool({ name: 'show_anki_review', arguments: {} })).structuredContent.viewId;
+    assert.notEqual(first, second);
+    assert.deepEqual((await client.callTool({ name: 'get_anki_view_state', arguments: { viewId: first } })).structuredContent, { viewId: first, hidden: false });
+    assert.deepEqual((await client.callTool({ name: 'get_anki_view_state', arguments: { viewId: second } })).structuredContent, { viewId: second, hidden: false });
+
+    const hide = await client.callTool({ name: 'hide_anki_review', arguments: { viewId: first } });
+    assert.deepEqual(hide.structuredContent, { viewId: first, hidden: true });
+    const repeat = await client.callTool({ name: 'hide_anki_review', arguments: { viewId: first } });
+    assert.deepEqual(repeat.structuredContent, hide.structuredContent);
+    assert.equal((await client.callTool({ name: 'get_anki_view_state', arguments: { viewId: first } })).structuredContent.hidden, true);
+    assert.equal((await client.callTool({ name: 'get_anki_view_state', arguments: { viewId: second } })).structuredContent.hidden, false);
+
+    const unknown = await client.callTool({ name: 'hide_anki_review', arguments: { viewId: SESSION } });
+    assert.equal(unknown.isError, true);
+    assert.equal(unknown.structuredContent, undefined);
+    const malformed = await client.callTool({ name: 'get_anki_view_state', arguments: { viewId: 'not-a-uuid' } });
+    assert.equal(malformed.isError, true);
+    assert.equal(ankiCalls, 0);
+  } finally {
+    await Promise.all([client.close(), server.close()]);
+  }
+});
+
+test('the view registry stays bounded without evicting a visible view', async () => {
+  let time = 0;
+  const server = new McpServer({ name: 'anki-view-pruning-test', version: '0.1.0' });
+  registerAnkiReviewTools(server, { now: () => time, maxViews: 2 });
+  const client = new Client({ name: 'anki-view-pruning-test-client', version: '0.1.0' });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  const show = () => client.callTool({ name: 'show_anki_review', arguments: {} });
+  const get = (viewId) => client.callTool({ name: 'get_anki_view_state', arguments: { viewId } });
+  try {
+    const first = (await show()).structuredContent.viewId;
+    const second = (await show()).structuredContent.viewId;
+    assert.equal((await show()).isError, true, 'A third view cannot evict either visible view.');
+    assert.equal((await get(first)).structuredContent.hidden, false);
+    assert.equal((await get(second)).structuredContent.hidden, false);
+
+    await client.callTool({ name: 'hide_anki_review', arguments: { viewId: first } });
+    const third = (await show()).structuredContent.viewId;
+    assert.equal((await get(first)).isError, true, 'A hidden view can be pruned to make room.');
+    assert.equal((await get(second)).structuredContent.hidden, false);
+    assert.equal((await get(third)).structuredContent.hidden, false);
+
+    await client.callTool({ name: 'hide_anki_review', arguments: { viewId: second } });
+    time += 60 * 60 * 1000 + 1;
+    assert.equal((await get(second)).isError, true, 'Hidden entries expire after one hour.');
+    assert.equal((await get(third)).structuredContent.hidden, false);
+    const fourth = (await show()).structuredContent.viewId;
+    assert.notEqual(fourth, third);
+
+    time += 23 * 60 * 60 * 1000;
+    assert.equal((await get(third)).structuredContent.hidden, false, 'Polling keeps a visible view alive.');
+    time += 2 * 60 * 60 * 1000;
+    assert.equal((await get(third)).structuredContent.hidden, false);
+    assert.equal((await get(fourth)).isError, true, 'An unpolled visible view expires after one idle day.');
   } finally {
     await Promise.all([client.close(), server.close()]);
   }

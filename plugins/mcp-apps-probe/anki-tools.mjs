@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
@@ -8,6 +9,9 @@ import { rateReview, resumeReview, startReview, ratingName } from '../../lib/ank
 export const ANKI_RESOURCE_URI = 'ui://mcp-apps-probe/anki-review.html';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PRIVATE_OUTPUT_DIR = path.join(ROOT, 'dist');
+const HIDDEN_VIEW_TTL_MS = 60 * 60 * 1000;
+const IDLE_VIEW_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_VIEWS = 256;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const uuid = z.string().regex(UUID_V4);
 
@@ -34,14 +38,75 @@ export function registerAnkiReviewTools(server, {
   clientFactory = createAnkiConnect,
   outputDir = PRIVATE_OUTPUT_DIR,
   reviewApi = { startReview, resumeReview, rateReview },
+  now = Date.now,
+  maxViews = MAX_VIEWS,
 } = {}) {
+  // A view is the particular widget instance attached to one show_anki_review
+  // result. Hiding it must not alter the Anki review session it may display.
+  const views = new Map();
+
+  function pruneViews(at = now()) {
+    for (const [id, state] of views) {
+      const expiresAt = state.hidden
+        ? state.hiddenAt + HIDDEN_VIEW_TTL_MS
+        : state.lastSeenAt + IDLE_VIEW_TTL_MS;
+      if (at >= expiresAt) views.delete(id);
+    }
+  }
+
+  function requireView(viewId) {
+    pruneViews();
+    if (!views.has(viewId)) throw new Error('This Anki review view is no longer available. Show it again.');
+    return views.get(viewId);
+  }
+
   registerAppTool(server, 'show_anki_review', {
     title: 'Show Anki review',
     description: 'Display an inline Anki review. The widget reads decks and records ratings through direct MCP Apps server calls, without posting each grade to chat.',
     inputSchema: z.object({}).strict(),
-    outputSchema: z.object({ status: z.literal('ready') }),
+    outputSchema: z.object({ status: z.literal('ready'), viewId: uuid }),
     _meta: { ui: { resourceUri: ANKI_RESOURCE_URI } },
-  }, async () => success({ status: 'ready' }, 'Anki review is ready. Select a deck in the inline card.'));
+  }, async () => asToolResult(async () => {
+    const at = now();
+    pruneViews(at);
+    // Hidden widgets no longer need a registry entry. Never evict a visible
+    // view merely because another one was opened.
+    for (const [id, state] of views) {
+      if (views.size < maxViews) break;
+      if (state.hidden) views.delete(id);
+    }
+    if (views.size >= maxViews) throw new Error('Too many Anki review views are open. Hide an older view and try again.');
+    const viewId = randomUUID();
+    views.set(viewId, { hidden: false, lastSeenAt: at, hiddenAt: null });
+    return success({ status: 'ready', viewId }, 'Anki review is ready. Select a deck in the inline card.');
+  }));
+
+  registerAppTool(server, 'hide_anki_review', {
+    title: 'Hide an Anki review view',
+    description: 'Hide one inline Anki review widget after the current work finishes. This does not change the Anki review session or grade cards.',
+    inputSchema: z.object({ viewId: uuid }).strict(),
+    outputSchema: z.object({ viewId: uuid, hidden: z.literal(true) }),
+    _meta: {},
+  }, async ({ viewId }) => asToolResult(async () => {
+    const state = requireView(viewId);
+    if (!state.hidden) {
+      state.hidden = true;
+      state.hiddenAt = now();
+    }
+    return success({ viewId, hidden: true }, 'Anki review view hidden.');
+  }));
+
+  registerAppTool(server, 'get_anki_view_state', {
+    title: 'Get Anki review view state',
+    description: 'Check whether this specific Anki review widget should remain visible.',
+    inputSchema: z.object({ viewId: uuid }).strict(),
+    outputSchema: z.object({ viewId: uuid, hidden: z.boolean() }),
+    _meta: { ui: { visibility: ['app'] } },
+  }, async ({ viewId }) => asToolResult(async () => {
+    const state = requireView(viewId);
+    if (!state.hidden) state.lastSeenAt = now();
+    return success({ viewId, hidden: state.hidden }, state.hidden ? 'This view is hidden.' : 'This view is visible.');
+  }));
 
   registerAppTool(server, 'list_anki_decks', {
     title: 'List Anki decks',

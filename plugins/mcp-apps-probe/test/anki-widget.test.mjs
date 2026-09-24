@@ -7,9 +7,14 @@ const html = await readFile(new URL('../anki-widget.html', import.meta.url), 'ut
 const script = (await readFile(new URL('../src/anki-widget.js', import.meta.url), 'utf8'))
   .replace("import { App } from '@modelcontextprotocol/ext-apps';", 'const App = globalThis.MockApp;');
 
-function mount(handlers, storage = new Map()) {
+function mount(handlers, storage = new Map(), { viewId } = {}) {
   const nodes = new Map();
   const calls = [];
+  const sizes = [];
+  const timers = new Map();
+  let nextTimer = 1;
+  let teardownRequests = 0;
+  let instance;
 
   class Element {
     constructor(tagName) {
@@ -51,18 +56,33 @@ function mount(handlers, storage = new Map()) {
   }
 
   class MockApp {
-    async connect() {}
+    constructor() { instance = this; }
+    async connect() {
+      if (viewId) this.ontoolresult?.(ok({ status: 'ready', viewId }));
+    }
     getHostCapabilities() { return { serverTools: {} }; }
     callServerTool(request) {
       calls.push(request);
       if (!handlers[request.name]) throw new Error(`Unexpected ${request.name}`);
       return handlers[request.name](request.arguments);
     }
+    async sendSizeChanged(size) { sizes.push(size); }
+    async requestTeardown() { teardownRequests++; }
   }
 
   runInNewContext(script, {
     MockApp,
-    document: { getElementById: (id) => nodes.get(id), createElement: (tag) => new Element(tag) },
+    document: {
+      getElementById: (id) => nodes.get(id),
+      createElement: (tag) => new Element(tag),
+      body: { style: {} },
+    },
+    setInterval: (callback, ms) => {
+      const id = nextTimer++;
+      timers.set(id, { callback, ms });
+      return id;
+    },
+    clearInterval: (id) => timers.delete(id),
     sessionStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
@@ -70,7 +90,13 @@ function mount(handlers, storage = new Map()) {
     },
   }, { timeout: 1000 });
 
-  return { node: (id) => nodes.get(id), calls, storage };
+  return {
+    node: (id) => nodes.get(id), calls, storage, sizes,
+    teardownRequests: () => teardownRequests,
+    poll: () => { for (const timer of timers.values()) timer.callback(); },
+    timerCount: () => timers.size,
+    emitResult: (result) => instance.ontoolresult?.(result),
+  };
 }
 
 const card = (id, question, answer) => ({
@@ -192,4 +218,65 @@ test('a remounted card restores only the exact unconfirmed rating for manual ret
   assert.equal(restored.calls[0].arguments.ease, 4);
   assert.equal(restored.node('question').textContent, 'Second');
   assert.equal(storage.has('while-anki-mcp-pending-v1'), false);
+});
+
+test('a hidden view clears the card, preserves its review session, and requests teardown', async () => {
+  const viewId = 'cbb4ad11-2740-4c6a-b949-c2a3417e353f';
+  const storage = new Map();
+  let hidden = false;
+  const first = card(1, 'Private question', 'Private answer');
+  first.card.media.question = [{ type: 'image', src: 'data:image/png;base64,YQ==' }];
+  const ui = mount({
+    get_anki_view_state: ({ viewId: requested }) => ok({ viewId: requested, hidden }),
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    start_anki_review: () => ok({ view: first }),
+  }, storage, { viewId });
+  await tick();
+  ui.node('start-review').click();
+  await tick();
+  assert.equal(ui.node('question').textContent, 'Private question');
+  assert.equal(ui.node('question-media').children.length, 1);
+  assert.equal(ui.timerCount(), 1);
+
+  hidden = true;
+  ui.poll();
+  await tick();
+  assert.equal(ui.node('review-root').hidden, true);
+  assert.equal(ui.node('question').textContent, '');
+  assert.equal(ui.node('answer-text').textContent, '');
+  assert.equal(ui.node('question-media').children.length, 0);
+  assert.equal(ui.node('rating-row').children.length, 0);
+  assert.equal(ui.timerCount(), 0);
+  assert.equal(ui.teardownRequests(), 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.sizes)), [{ width: 0, height: 0 }]);
+  assert.equal(storage.get('while-anki-mcp-session-id'), first.sessionId);
+  assert.equal(ui.calls.filter((call) => call.name === 'rate_anki_review').length, 0, 'Hiding never grades a card.');
+});
+
+test('hiding during an unconfirmed rating keeps the exact retry receipt', async () => {
+  const viewId = 'b647ed6d-9929-4d5e-8337-00ccbdac0269';
+  const storage = new Map();
+  let hidden = false;
+  const ui = mount({
+    get_anki_view_state: ({ viewId: requested }) => ok({ viewId: requested, hidden }),
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    start_anki_review: () => ok({ view: card(1, 'Question', 'Answer') }),
+    rate_anki_review: () => new Promise(() => {}),
+  }, storage, { viewId });
+  await tick();
+  ui.node('start-review').click();
+  await tick();
+  ui.node('reveal-answer').click();
+  ui.node('rating-row').children[1].click();
+  await tick();
+  const pending = storage.get('while-anki-mcp-pending-v1');
+  assert.ok(pending);
+
+  hidden = true;
+  ui.poll();
+  await tick();
+  assert.equal(ui.node('review-root').hidden, true);
+  assert.equal(storage.get('while-anki-mcp-pending-v1'), pending);
+  assert.equal(storage.get('while-anki-mcp-session-id'), card(1, '', '').sessionId);
+  assert.equal(ui.calls.filter((call) => call.name === 'rate_anki_review').length, 1, 'Hide sends no additional grade.');
 });
