@@ -1,8 +1,45 @@
-# While
+# While Anki
 
-A small quiz for the time you spend waiting for Codex. Practice with sample questions or your own Anki cards directly inside the conversation. Requires Node.js 22 or newer; no npm dependencies or model API calls.
+Review Anki cards inside a Codex desktop conversation while Codex works. Reveal the answer and choose **Again**, **Hard**, **Good**, or **Easy**; the rating is saved in Anki and the next card appears without posting a chat message. Ask Codex to hide the card view when it finishes. The separate legacy CLI and practice quiz are documented below.
 
-## Use your Anki deck
+## Install the Codex plugin
+
+1. Install [Anki](https://apps.ankiweb.net/), import a deck, and install [AnkiConnect](https://ankiweb.net/shared/info/2055492159) from **Tools → Add-ons → Get Add-ons** using code `2055492159`. Restart Anki and leave it open while reviewing.
+2. Use the Codex desktop app and install [Node.js 22 or newer](https://nodejs.org/) on the same computer as Anki. The plugin does not require cloning this repository, running `npm ci`, or building JavaScript.
+3. Add the GitHub marketplace and install the plugin:
+
+   ```sh
+   codex plugin marketplace add gustanas/llm-anki-convo
+   codex plugin add mcp-apps-probe@while-anki
+   ```
+
+4. Start a **new Codex task** and ask: “Show Anki while you work, then hide it.” Choose a deck in the inline widget. The last deck you used is selected next time when it is still available.
+
+The plugin is listed as **While Anki** in its GitHub marketplace; `mcp-apps-probe` is its current technical install ID. This marketplace is separate from OpenAI’s universal public Plugins Directory. [Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+
+The widget can review all available **due and new** cards, including those beyond Anki’s daily cap. Future, suspended, and buried cards are excluded. Ratings change your real Anki schedule. If Anki cannot confirm a rating, the current card stays in place for a safe retry.
+
+### Show Anki automatically
+
+Installation alone does not automatically open Anki on every prompt. To opt in once across your Codex projects, add this instruction to `~/.codex/AGENTS.md` (create the file if needed):
+
+```text
+For substantive work requests, call show_anki_review as your first tool action after a brief acknowledgment. Keep its returned viewId, then call hide_anki_review with that exact viewId immediately before your final answer, including when the work fails. Skip Anki for brief questions and whenever I say "no Anki". Hiding must not grade a card or clear a pending review.
+```
+
+Start a new Codex task after changing `AGENTS.md`. This is a Codex instruction, not an instant-on plugin setting: the widget appears when Codex makes its first tool call. This repository’s [AGENTS.md](AGENTS.md) has a development-only `off` / `work` / `always` switch; that file is not installed as a global preference for other users.
+
+### Data and permissions
+
+The local MCP server talks to AnkiConnect on loopback. Card text and supported media are shown inside Codex; the last-deck preference, review session data, and rating receipts are stored locally. The plugin does not need an account or a hosted service. Keep generated card files and session data out of Git. You can set `ANKI_CONNECT_URL` for a different local address or `ANKI_CONNECT_KEY` if your AnkiConnect setup uses an API key; only loopback HTTP endpoints are accepted.
+
+See the [plugin guide](plugins/mcp-apps-probe/README.md) for development and troubleshooting.
+
+## Legacy CLI and practice quiz
+
+The following standalone tools predate the quiet MCP App. They remain available when you work from this repository. They require Node.js 22 or newer and do not make model API calls.
+
+### Use your Anki deck
 
 1. Install [Anki](https://apps.ankiweb.net/) and import a deck.
 2. In Anki, open **Tools → Add-ons → Get Add-ons**, enter **2055492159** ([AnkiConnect](https://ankiweb.net/shared/info/2055492159)), and restart Anki.
@@ -20,7 +57,7 @@ npm run anki:build -- --deck "Your deck" --limit 5
 
 Ask Codex to **show my Anki quiz inline while you work**. Codex can run the build with `--output /absolute/path/while-anki.html` pointing to its conversation visualization directory and display it in a working update. No browser window or web server is needed.
 
-## Review the whole due and new queue
+### Review the whole due and new queue
 
 To save real Anki reviews, ask Codex to **start an unlimited Anki review of my deck inline**. Or start it from the project directory:
 
@@ -42,7 +79,7 @@ In the practice copy, use **Show answer** to reveal the back, then **Next card**
 
 Selection prioritizes due cards, then new cards, then other available cards if needed. Suspended and buried cards are excluded. This is a practice selection, not Anki’s full reviewer order or daily-limit algorithm. Parent deck names include their subdecks. `--skip-identical` skips cards with identical rendered fronts and backs, such as course introduction notes; it examines up to 100 candidates to fill a batch.
 
-### Card and media support
+#### Card and media support
 
 Basic front/back and rendered cloze cards become plain-text flashcards. Jlab listening cards use their named content fields to retain the prompt, explanations, and media without addon controls. Styling, embedded scripts, and custom interactive templates are not executed. Complex templates may need a dedicated adapter.
 
@@ -62,7 +99,7 @@ This saves `dist/anki-raw.json`. Raw snapshots contain Anki HTML and are not dir
 npm run inline:build -- "$PWD/dist/while-anki.html" --cards "$PWD/dist/anki-cards.json"
 ```
 
-## Use the sample quiz
+### Use the sample quiz
 
 Ask Codex to **show the While quiz inline in this conversation**, or build the bundled eight-card sample:
 
@@ -74,7 +111,7 @@ Answer with the buttons or keys **1–4** while the quiz has focus, then choose 
 
 To keep quizzes in working updates, ask Codex to show one when work starts and omit it from the final answer. The app controls whether those updates collapse when work finishes. The quiz cannot remove earlier copies, pin itself to the bottom, or detect task completion. Saved progress is best effort and may reset if the conversation reloads or the quiz is recreated.
 
-## Structure
+### Structure
 
 - `inline/quiz.html` — self-contained multiple-choice and flashcard interface.
 - `inline/review.html` — one-card Anki review with real rating controls.
@@ -89,7 +126,7 @@ To keep quizzes in working updates, ask Codex to show one when work starts and o
 
 Sample cards use `id`, `category`, `question`, `choices`, `answerIndex`, and `explanation`. Anki cards use `type: "flashcard"`, `id`, `category`, `question`, `answer`, and optional `media.question`/`media.answer` arrays of embedded image/audio objects.
 
-## Verify
+### Verify
 
 ```sh
 npm test

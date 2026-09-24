@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "mcp_apps_probe": {
-      "command": "/opt/homebrew/bin/node",
-      "args": ["/Users/gustavo/dev/llm-anki-convo/plugins/mcp-apps-probe/server.mjs"],
-      "cwd": "/Users/gustavo/dev/llm-anki-convo/plugins/mcp-apps-probe",
+      "command": "node",
+      "args": ["./server.bundle.mjs"],
+      "cwd": "./",
+      "env_vars": ["ANKI_CONNECT_URL", "ANKI_CONNECT_KEY", "WHILE_ANKI_DATA_DIR", "PLUGIN_DATA", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA", "HOME", "USERPROFILE", "PATH"],
       "enabled": true,
       "default_tools_approval_mode": "approve",
       "startup_timeout_sec": 10

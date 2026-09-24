@@ -23,7 +23,7 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
       reviewWrites,
       deckNames: async () => ['Languages'],
     }),
-    outputDir: '/private/ignored/dist',
+    dataDir: temporaryDir,
     preferencesPath,
     reviewApi: {
       startReview: async (args) => { calls.push(['start', args]); return { path: '/private/ignored/dist/card.html', view: firstView, warnings: [] }; },
@@ -53,6 +53,7 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
     assert.equal(started.structuredContent.view.nonce, NONCE);
     assert.equal(JSON.stringify(started.structuredContent).includes('/private/ignored'), false, 'Private output paths stay on the server.');
     assert.equal(calls[0][1].client.reviewWrites, false);
+    assert.equal(calls[0][1].sessionDir, path.join(temporaryDir, 'review-sessions'));
     assert.deepEqual((await client.callTool({ name: 'list_anki_decks', arguments: {} })).structuredContent, {
       decks: ['Languages'], lastUsedDeck: 'Languages',
     });
@@ -67,6 +68,7 @@ test('Anki widget tools keep card data and simulated ratings in direct app calls
     assert.equal(calls[2][1].client.reviewWrites, true);
     assert.equal(calls[2][1].ease, 3);
     assert.equal(calls[2][1].nonce, NONCE);
+    assert.equal(calls[2][1].sessionDir, path.join(temporaryDir, 'review-sessions'));
   } finally {
     await Promise.all([client.close(), server.close()]);
     await rm(temporaryDir, { recursive: true, force: true });

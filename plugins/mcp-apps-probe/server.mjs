@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -44,7 +45,7 @@ export function createProbeServer() {
   registerAppResource(server, 'MCP Apps probe UI', RESOURCE_URI, {}, async () => {
     const [template, bundle] = await Promise.all([
       readFile(path.join(HERE, 'widget.html'), 'utf8'),
-      readFile(path.join(HERE, 'dist', 'widget.js'), 'utf8'),
+      readFile(path.join(HERE, 'assets', 'widget.js'), 'utf8'),
     ]);
     const html = template.replace('__PROBE_BUNDLE__', () => bundle.replaceAll('</script', '<\\/script'));
     return { contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }] };
@@ -53,7 +54,7 @@ export function createProbeServer() {
   registerAppResource(server, 'Inline Anki review UI', ANKI_RESOURCE_URI, {}, async () => {
     const [template, bundle] = await Promise.all([
       readFile(path.join(HERE, 'anki-widget.html'), 'utf8'),
-      readFile(path.join(HERE, 'dist', 'anki-widget.js'), 'utf8'),
+      readFile(path.join(HERE, 'assets', 'anki-widget.js'), 'utf8'),
     ]);
     const html = template.replace('__ANKI_BUNDLE__', () => bundle.replaceAll('</script', '<\\/script'));
     return {
@@ -69,6 +70,6 @@ export function createProbeServer() {
   return server;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   await createProbeServer().connect(new StdioServerTransport());
 }

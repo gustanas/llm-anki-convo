@@ -1,20 +1,28 @@
 {
   "name": "mcp-apps-probe",
-  "version": "0.1.0+codex.20260924121543",
-  "description": "MCP Apps probe and quiet inline Anki reviews for Codex desktop.",
+  "version": "0.1.0",
+  "description": "Review Anki cards in Codex while it works.",
   "author": {
-    "name": "Local developer"
+    "name": "gustanas",
+    "url": "https://github.com/gustanas"
   },
+  "homepage": "https://github.com/gustanas/llm-anki-convo",
+  "repository": "https://github.com/gustanas/llm-anki-convo",
+  "keywords": ["anki", "flashcards", "spaced-repetition", "codex"],
   "interface": {
-    "displayName": "While Anki MCP Apps",
-    "shortDescription": "Review Anki cards inline without chat turns.",
-    "longDescription": "Review due and new Anki cards inline. The widget sends ratings directly to a local MCP tool, records them through AnkiConnect, and shows the next card without posting a chat message. Includes a harmless counter probe for testing quiet tool calls.",
-    "developerName": "Local developer",
+    "displayName": "While Anki",
+    "shortDescription": "Review Anki while Codex works.",
+    "longDescription": "Review due and new Anki cards inside Codex desktop while it works. Ratings are recorded through local AnkiConnect, and the next card appears without posting a chat message. Requires Anki, AnkiConnect, and Node.js 22 or newer on the same computer.",
+    "developerName": "gustanas",
     "category": "Productivity",
     "capabilities": [
-      "Interactive"
+      "Interactive",
+      "Write"
     ],
-    "defaultPrompt": "Help me start a quiet inline Anki review using the MCP App."
+    "websiteURL": "https://github.com/gustanas/llm-anki-convo",
+    "defaultPrompt": [
+      "Show Anki while you work, then hide it when finished."
+    ]
   },
   "mcpServers": "./.mcp.json"
 }

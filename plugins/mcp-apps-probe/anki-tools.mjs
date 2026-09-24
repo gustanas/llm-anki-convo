@@ -1,21 +1,42 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import { createAnkiConnect } from '../../lib/anki-connect.mjs';
-import { rateReview, resumeReview, startReview, ratingName } from '../../lib/anki-review.mjs';
+import { rateReview, resumeReview, startReview, ratingName } from './anki-review-runtime.mjs';
 
 export const ANKI_RESOURCE_URI = 'ui://mcp-apps-probe/anki-review-v3.html';
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const PRIVATE_OUTPUT_DIR = path.join(ROOT, 'dist');
-const DEFAULT_PREFERENCES_PATH = path.join(PRIVATE_OUTPUT_DIR, 'anki-last-deck.json');
 const HIDDEN_VIEW_TTL_MS = 60 * 60 * 1000;
 const IDLE_VIEW_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_VIEWS = 256;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const uuid = z.string().regex(UUID_V4);
+
+export function resolveAnkiDataDir({ env = process.env, platform = process.platform, home = homedir() } = {}) {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const override = env.WHILE_ANKI_DATA_DIR;
+  if (override !== undefined) {
+    if (typeof override !== 'string' || !paths.isAbsolute(override)) {
+      throw new Error('WHILE_ANKI_DATA_DIR must be an absolute path.');
+    }
+    return paths.resolve(override);
+  }
+  // Codex documents PLUGIN_DATA for hooks. Some hosts also forward it to
+  // bundled MCP servers; use it when present without depending on it.
+  if (env.PLUGIN_DATA && paths.isAbsolute(env.PLUGIN_DATA)) return paths.resolve(env.PLUGIN_DATA);
+  if (platform === 'darwin') return paths.join(home, 'Library', 'Application Support', 'While Anki');
+  if (platform === 'win32') {
+    const base = env.LOCALAPPDATA && paths.isAbsolute(env.LOCALAPPDATA)
+      ? env.LOCALAPPDATA
+      : env.APPDATA && paths.isAbsolute(env.APPDATA) ? env.APPDATA : paths.join(home, 'AppData', 'Local');
+    return paths.join(base, 'While Anki');
+  }
+  const base = env.XDG_DATA_HOME && paths.isAbsolute(env.XDG_DATA_HOME)
+    ? env.XDG_DATA_HOME : paths.join(home, '.local', 'share');
+  return paths.join(base, 'while-anki');
+}
 
 async function readLastUsedDeck(preferencesPath) {
   try {
@@ -63,8 +84,9 @@ async function asToolResult(action) {
  */
 export function registerAnkiReviewTools(server, {
   clientFactory = createAnkiConnect,
-  outputDir = PRIVATE_OUTPUT_DIR,
-  preferencesPath = DEFAULT_PREFERENCES_PATH,
+  dataDir = resolveAnkiDataDir(),
+  sessionDir = path.join(dataDir, 'review-sessions'),
+  preferencesPath = path.join(dataDir, 'last-deck.json'),
   reviewApi = { startReview, resumeReview, rateReview },
   now = Date.now,
   maxViews = MAX_VIEWS,
@@ -165,7 +187,7 @@ export function registerAnkiReviewTools(server, {
     outputSchema: z.object({ view: z.unknown(), warnings: z.array(z.string()) }),
     _meta: { ui: { visibility: ['app'] } },
   }, async ({ deck, skipIdentical }) => asToolResult(async () => {
-    const result = await reviewApi.startReview({ client: clientFactory({ reviewWrites: false }), deck, outputDir, skipIdentical });
+    const result = await reviewApi.startReview({ client: clientFactory({ reviewWrites: false }), deck, sessionDir, skipIdentical });
     await rememberDeck(result);
     return success({ view: result.view, warnings: result.warnings }, result.view.done ? 'No due or new cards are available.' : 'Review card ready.');
   }));
@@ -177,7 +199,7 @@ export function registerAnkiReviewTools(server, {
     outputSchema: z.object({ view: z.unknown(), warnings: z.array(z.string()) }),
     _meta: { ui: { visibility: ['app'] } },
   }, async ({ sessionId }) => asToolResult(async () => {
-    const result = await reviewApi.resumeReview({ client: clientFactory({ reviewWrites: false }), sessionId });
+    const result = await reviewApi.resumeReview({ client: clientFactory({ reviewWrites: false }), sessionId, sessionDir });
     await rememberDeck(result);
     return success({ view: result.view, warnings: result.warnings }, result.view.done ? 'Review session complete.' : 'Review card ready.');
   }));
@@ -194,7 +216,7 @@ export function registerAnkiReviewTools(server, {
     outputSchema: z.object({ recorded: z.literal(true), rating: z.string(), view: z.unknown(), warnings: z.array(z.string()) }),
     _meta: { ui: { visibility: ['app'] } },
   }, async ({ sessionId, cardId, nonce, ease }) => asToolResult(async () => {
-    const result = await reviewApi.rateReview({ client: clientFactory({ reviewWrites: true }), sessionId, cardId, nonce, ease });
+    const result = await reviewApi.rateReview({ client: clientFactory({ reviewWrites: true }), sessionId, cardId, nonce, ease, sessionDir });
     if (result?.recorded !== true || !result.view) throw new Error('Anki did not confirm the new review. Keep this card and retry the same rating.');
     await rememberDeck(result);
     return success({ recorded: true, rating: ratingName(ease), view: result.view, warnings: result.warnings }, `Saved ${ratingName(ease)} in Anki.`);

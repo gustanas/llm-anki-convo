@@ -1,12 +1,44 @@
-# Quiet Anki reviews with MCP Apps
+# While Anki for Codex
 
-This branch tests Anki reviews inside a Codex conversation without sending a chat message for each rating. The MCP App widget calls an app-only MCP tool directly; the local server validates the active review and saves the selected rating through AnkiConnect. The same widget then shows the next card. A harmless counter probe remains available to test the quiet tool-call path without touching Anki.
+While Anki shows your Anki reviews in a Codex desktop conversation while Codex works. Reveal an answer, choose **Again**, **Hard**, **Good**, or **Easy**, and the rating is recorded in Anki. The next card appears in the same widget without sending a chat message. When work finishes, Codex can hide the view without grading or abandoning a pending card.
 
-## Set up locally
+## Install from GitHub
 
-Install Anki and the [AnkiConnect add-on](https://ankiweb.net/shared/info/2055492159) (code `2055492159`), restart Anki, import a deck, and keep Anki open. AnkiConnect listens on loopback by default. If you configured a custom local URL or API key, set `ANKI_CONNECT_URL` or `ANKI_CONNECT_KEY` for the MCP server process.
+1. Install [Anki](https://apps.ankiweb.net/) and import a deck.
+2. In Anki, open **Tools → Add-ons → Get Add-ons**, enter `2055492159` to install [AnkiConnect](https://ankiweb.net/shared/info/2055492159), then restart Anki. Keep Anki open while reviewing.
+3. Use the Codex desktop app and install Node.js 22 or newer. The MCP server runs locally on the computer where Anki is open.
+4. Add the GitHub marketplace and install the plugin:
 
-From this directory:
+   ```sh
+   codex plugin marketplace add gustanas/llm-anki-convo
+   codex plugin add mcp-apps-probe@while-anki
+   ```
+
+5. Start a **new Codex task** and ask: “Show Anki while you work, then hide it.” Choose a deck in the widget; the last deck used is preselected next time if it is still available.
+
+The plugin is displayed as **While Anki**; `mcp-apps-probe` remains its technical install ID. The installation includes the built server and widget assets, so users do not need to clone the repository or run `npm ci` or `npm run build`. This GitHub marketplace is distinct from OpenAI’s universal public Plugins Directory. [Marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+
+## Review behavior
+
+The widget includes every available **due and new** card in the chosen deck, even past its daily cap. Future, suspended, and buried cards are excluded. It loads one card at a time, so there is no fixed card-count limit. Anki supplies the interval labels and records each rating in its review history. **Rating a card changes its real Anki schedule.**
+
+The widget uses app-only MCP tools to list decks, start or resume a review, and submit a rating. These calls do not create a new chat message. The server verifies the active session, card, nonce, and Anki review history before confirming a rating. If Anki is unavailable or a grade cannot be confirmed, the current card stays visible; reopen Anki and retry the same rating.
+
+The model-visible `show_anki_review` tool opens the widget and returns a `viewId`. `hide_anki_review` hides that exact view before the final answer. Hiding clears the rendered card and asks the host to close the widget. It does not grade a card, end the review session, or discard a pending rating. Codex may retain the tool-result header, but the widget’s one-pixel minimum frame height lets the blank area collapse.
+
+## Optional automatic showing
+
+Installing the plugin does not make the widget appear on every prompt. You can set a one-time preference in your own `~/.codex/AGENTS.md`; see the [example in the repository README](../../README.md#show-anki-automatically). The repository’s `AGENTS.md` also has a development-only `off` / `work` / `always` switch. These are Codex instructions, not native plugin settings or a hook that renders before the model starts. Start a new task after changing instructions.
+
+## Configuration and privacy
+
+AnkiConnect uses `http://127.0.0.1:8765` by default. Set `ANKI_CONNECT_URL` if AnkiConnect listens at a different local address, or `ANKI_CONNECT_KEY` if you configured an API key. Only loopback HTTP endpoints are accepted. Set `WHILE_ANKI_DATA_DIR` to an absolute path to choose where the plugin stores its private data.
+
+The MCP server connects to Anki locally and does not require a separate account or hosted service. Card text and supported local images and audio are displayed inside Codex. The last-deck preference, review session files, and grading receipts stay in a private local data directory (normally `~/Library/Application Support/While Anki/` on macOS, `%LOCALAPPDATA%\\While Anki\\` on Windows, or `~/.local/share/while-anki/` on Linux). A host-provided `PLUGIN_DATA` directory takes precedence over those defaults. Do not commit generated card files or session data; they can contain your deck text and media. The bundled widget assets contain no imported deck content.
+
+## Develop and verify
+
+From this plugin directory:
 
 ```sh
 npm ci
@@ -14,31 +46,4 @@ npm run build
 npm test
 ```
 
-From the repository root, install the branch-local plugin:
-
-```sh
-codex plugin marketplace add /Users/gustavo/dev/llm-anki-convo
-codex plugin add mcp-apps-probe@personal
-```
-
-Start a new Codex task after installing or updating the plugin so its tool list refreshes. The experimental `.mcp.json` contains absolute paths to this checkout and its Node executable. Update them if the checkout moves or Node is installed elsewhere.
-
-For development in this repository, `AGENTS.md` has a `Development Auto-show mode` setting. Set it to `off` for explicit requests only, `work` to open Anki during substantive work requests, or `always` to open it on ordinary turns too. Start a new Codex task after changing the mode; this is an instruction switch for testing, not a plugin-wide setting or an immediate hook-rendered widget.
-
-## Review cards inline
-
-Ask Codex to **show an Anki review using the MCP App**. The `show_anki_review` tool opens the widget. Choose a deck in the widget, reveal the answer, then press **Again**, **Hard**, **Good**, or **Easy**. The widget calls `rate_anki_review` directly. Once Anki confirms the grade, the next card appears in the same widget without a new chat message. The widget also uses `list_anki_decks`, `start_anki_review`, and `resume_anki_review` to manage the session quietly.
-
-The deck selector preselects the last deck you used when it is still available in Anki. This preference is saved privately on this computer; opening the view does not start reviewing or grade a card.
-
-When Codex finishes the work for which it showed the view, it calls `hide_anki_review` with that view's ID. The widget checks its own visibility state, clears card content, and asks the host to close it. Its resource sets Codex's minimum frame height to one pixel so the widget's one-pixel resize request can collapse the blank area if the host keeps the iframe. Codex still owns the chat tool-result container and may leave its header visible. Hiding does not grade a card, delete the review session, or discard a pending rating. The repository's `AGENTS.md` instructs Codex to send this hide signal before each final answer after opening a view.
-
-The session considers every available **due and new** card, including cards beyond Anki's daily cap. It loads cards one at a time and has no fixed review-count limit. Future, suspended, and buried cards are excluded. Anki supplies the rating intervals and records the actual review. This is not a copy-only practice quiz: pressing a rating changes the card's Anki scheduling.
-
-For an end-to-end test, use a deck with a due or new card. Reveal a card, press one rating, and check that the widget advances without posting a chat message. Then check that card's review history in Anki. If Anki is unavailable or the grade cannot be confirmed, the widget keeps the card instead of claiming it was saved; reopen Anki and retry the same rating. The server checks the session, card, nonce, and Anki review history so a repeated click or uncertain reply does not intentionally record a second grade.
-
-Card text and supported local images/audio are displayed in the Codex widget. Session files and grading receipts stay under this repository's ignored `dist/review-sessions/`, and generated card output belongs in ignored `dist/` or a private conversation visualization directory. These files contain private deck content and must not be committed or published. The generic plugin UI bundle contains no deck data.
-
-## Test the quiet-action bridge alone
-
-Ask Codex: **Show the MCP Apps quiet-action probe.** The `show_probe` tool displays a counter widget. Click **Increment server count** once. The count should increase in that widget without a new chat message. This counter uses an in-memory `increment_probe` tool and never accesses Anki or changes cards. If the counter cannot call its server tool, the Anki rating UI cannot use this direct-call path in that host.
+The harmless `show_probe` counter widget is available for diagnosing direct app-to-server calls. Its **Increment server count** button updates the counter without sending a chat message or touching Anki. The tests use local fixtures and never rate cards in your Anki collection.
