@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "esbuild src/widget.js --bundle --minify --format=iife --target=es2022 --outfile=dist/widget.js",
+    "build": "esbuild src/widget.js src/anki-widget.js --bundle --minify --format=iife --target=es2022 --outdir=dist",
     "start": "node server.mjs",
     "test": "node --test test/*.test.mjs"
   },

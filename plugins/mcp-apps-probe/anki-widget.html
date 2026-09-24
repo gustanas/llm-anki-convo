@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: light dark; font: 14px system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; color: CanvasText; background: Canvas; }
+    main { display: grid; gap: 16px; max-width: 620px; margin: 0 auto; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 18px; line-height: 1.3; }
+    h2 { font-size: 17px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+    header, section { display: grid; gap: 12px; }
+    header p, .muted { color: GrayText; }
+    .row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .card { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; padding: 16px; }
+    label { font-weight: 600; }
+    select, button { font: inherit; }
+    select { width: 100%; min-height: 38px; padding: 6px 9px; color: CanvasText; background: Canvas; border: 1px solid color-mix(in srgb, CanvasText 28%, transparent); border-radius: 8px; }
+    button { min-height: 38px; padding: 7px 12px; border: 1px solid color-mix(in srgb, CanvasText 28%, transparent); border-radius: 8px; color: CanvasText; background: Canvas; cursor: pointer; }
+    button:hover:not(:disabled) { background: color-mix(in srgb, CanvasText 8%, Canvas); }
+    button:disabled { cursor: default; opacity: .55; }
+    button.primary { color: white; background: #315fc8; border-color: #315fc8; font-weight: 600; }
+    button.primary:hover:not(:disabled) { background: #234cae; }
+    button.quiet { border: 0; padding-inline: 4px; text-decoration: underline; color: inherit; background: transparent; }
+    button.quiet:hover:not(:disabled) { background: transparent; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ratings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .ratings button { display: grid; place-items: center; gap: 2px; min-width: 0; }
+    .ratings small { font-size: 11px; font-weight: 400; }
+    .answer { display: grid; gap: 12px; border-top: 1px solid color-mix(in srgb, CanvasText 18%, transparent); padding-top: 14px; }
+    .answer p { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .media { display: grid; gap: 10px; }
+    .media:empty { display: none; }
+    .media img { max-width: 100%; max-height: 280px; object-fit: contain; }
+    .media audio { width: 100%; }
+    #status { min-height: 1.4em; overflow-wrap: anywhere; }
+    #status[data-error="true"] { color: #b93838; }
+    [hidden] { display: none !important; }
+    @media (max-width: 460px) { .ratings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Anki review</h1>
+      <p>Review due and new cards here. Ratings save directly in Anki.</p>
+    </header>
+
+    <section id="deck-panel" class="card" aria-label="Choose an Anki deck">
+      <label for="deck-select">Deck</label>
+      <select id="deck-select" disabled><option value="">Connecting to Anki…</option></select>
+      <div class="controls">
+        <button id="start-review" class="primary" type="button" disabled>Start review</button>
+        <button id="resume-review" type="button" hidden disabled>Resume review</button>
+        <button id="refresh-decks" type="button" disabled>Refresh decks</button>
+      </div>
+    </section>
+
+    <section id="card-panel" class="card" aria-label="Anki card" hidden>
+      <div class="row">
+        <span id="deck-name" class="muted"></span>
+        <span id="progress" class="muted"></span>
+      </div>
+      <h2 id="question"></h2>
+      <div id="question-media" class="media"></div>
+      <div id="answer" class="answer" hidden>
+        <p id="answer-text"></p>
+        <div id="answer-media" class="media"></div>
+      </div>
+      <div id="reveal-row" class="controls">
+        <button id="reveal-answer" class="primary" type="button">Show answer</button>
+      </div>
+      <div id="rating-row" class="ratings" role="group" aria-label="Record Anki rating" hidden></div>
+      <div class="controls">
+        <button id="choose-deck" class="quiet" type="button">Choose another deck</button>
+        <button id="reload-card" class="quiet" type="button">Reload card</button>
+      </div>
+    </section>
+
+    <p id="status" role="status" aria-live="polite">Connecting to the host…</p>
+  </main>
+  <script>__ANKI_BUNDLE__</script>
+</body>
+</html>

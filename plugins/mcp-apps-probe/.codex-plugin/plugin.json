@@ -1,18 +1,20 @@
 {
   "name": "mcp-apps-probe",
-  "version": "0.1.0",
-  "description": "Read-only MCP Apps UI probe for Codex desktop.",
+  "version": "0.1.0+codex.20260924105304",
+  "description": "MCP Apps probe and quiet inline Anki reviews for Codex desktop.",
   "author": {
     "name": "Local developer"
   },
   "interface": {
-    "displayName": "MCP Apps Probe",
-    "shortDescription": "Test quiet inline tool calls.",
-    "longDescription": "Displays a harmless counter widget to test whether Codex desktop supports MCP Apps tool calls without a chat message. It never accesses Anki.",
+    "displayName": "While Anki MCP Apps",
+    "shortDescription": "Review Anki cards inline without chat turns.",
+    "longDescription": "Review due and new Anki cards inline. The widget sends ratings directly to a local MCP tool, records them through AnkiConnect, and shows the next card without posting a chat message. Includes a harmless counter probe for testing quiet tool calls.",
     "developerName": "Local developer",
     "category": "Productivity",
-    "capabilities": ["Interactive"],
-    "defaultPrompt": "Show the MCP Apps quiet-action probe."
+    "capabilities": [
+      "Interactive"
+    ],
+    "defaultPrompt": "Help me start a quiet inline Anki review using the MCP App."
   },
   "mcpServers": "./.mcp.json"
 }

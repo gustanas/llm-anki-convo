@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
+import { ANKI_RESOURCE_URI, registerAnkiReviewTools } from './anki-tools.mjs';
 
 export const RESOURCE_URI = 'ui://mcp-apps-probe/counter.html';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export function createProbeServer() {
   const server = new McpServer({ name: 'mcp-apps-probe', version: '0.1.0' });
   let count = 0;
+
+  registerAnkiReviewTools(server);
 
   registerAppTool(server, 'show_probe', {
     title: 'Show MCP Apps probe',
@@ -45,6 +48,15 @@ export function createProbeServer() {
     ]);
     const html = template.replace('__PROBE_BUNDLE__', () => bundle.replaceAll('</script', '<\\/script'));
     return { contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }] };
+  });
+
+  registerAppResource(server, 'Inline Anki review UI', ANKI_RESOURCE_URI, {}, async () => {
+    const [template, bundle] = await Promise.all([
+      readFile(path.join(HERE, 'anki-widget.html'), 'utf8'),
+      readFile(path.join(HERE, 'dist', 'anki-widget.js'), 'utf8'),
+    ]);
+    const html = template.replace('__ANKI_BUNDLE__', () => bundle.replaceAll('</script', '<\\/script'));
+    return { contents: [{ uri: ANKI_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: html }] };
   });
 
   return server;
