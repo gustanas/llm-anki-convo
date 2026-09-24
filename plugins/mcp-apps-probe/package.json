@@ -1,0 +1,22 @@
+{
+  "name": "mcp-apps-probe-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "esbuild src/widget.js --bundle --minify --format=iife --target=es2022 --outfile=dist/widget.js",
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.1.0",
+    "@modelcontextprotocol/core": "2.1.0",
+    "@modelcontextprotocol/ext-apps": "2.0.0",
+    "@modelcontextprotocol/server": "2.1.0",
+    "esbuild": "0.28.2",
+    "zod": "4.6.5"
+  }
+}
