@@ -6,6 +6,7 @@ import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import { createAnkiConnect } from '../../lib/anki-connect.mjs';
 import { rateReview, resumeReview, startReview, ratingName } from './anki-review-runtime.mjs';
+import { readAutoShowMode, resolveAutoShowSettingsPath, writeAutoShowMode } from './auto-show-settings.mjs';
 
 export const ANKI_RESOURCE_URI = 'ui://while-anki/anki-review-v3.html';
 const HIDDEN_VIEW_TTL_MS = 60 * 60 * 1000;
@@ -87,6 +88,7 @@ export function registerAnkiReviewTools(server, {
   dataDir = resolveAnkiDataDir(),
   sessionDir = path.join(dataDir, 'review-sessions'),
   preferencesPath = path.join(dataDir, 'last-deck.json'),
+  autoShowSettingsPath = resolveAutoShowSettingsPath(),
   reviewApi = { startReview, resumeReview, rateReview },
   now = Date.now,
   maxViews = MAX_VIEWS,
@@ -166,6 +168,28 @@ export function registerAnkiReviewTools(server, {
     const state = requireView(viewId);
     if (!state.hidden) state.lastSeenAt = now();
     return success({ viewId, hidden: state.hidden }, state.hidden ? 'This view is hidden.' : 'This view is visible.');
+  }));
+
+  registerAppTool(server, 'get_anki_autoshow', {
+    title: 'Get Anki auto-show setting',
+    description: 'Read when the Anki view should open automatically for future messages.',
+    inputSchema: z.object({}).strict(),
+    outputSchema: z.object({ mode: z.enum(['off', 'long_tasks', 'every_message']) }),
+    _meta: { ui: { visibility: ['app'] } },
+  }, async () => asToolResult(async () => {
+    const mode = await readAutoShowMode(autoShowSettingsPath);
+    return success({ mode }, `Anki auto-show: ${mode}.`);
+  }));
+
+  registerAppTool(server, 'set_anki_autoshow', {
+    title: 'Set Anki auto-show setting',
+    description: 'Save when the Anki view should open automatically for future messages.',
+    inputSchema: z.object({ mode: z.enum(['off', 'long_tasks', 'every_message']) }).strict(),
+    outputSchema: z.object({ mode: z.enum(['off', 'long_tasks', 'every_message']) }),
+    _meta: { ui: { visibility: ['app'] } },
+  }, async ({ mode }) => asToolResult(async () => {
+    await writeAutoShowMode(autoShowSettingsPath, mode);
+    return success({ mode }, `Anki auto-show saved: ${mode}.`);
   }));
 
   registerAppTool(server, 'list_anki_decks', {

@@ -217,6 +217,57 @@ test('hiding one view is idempotent and leaves other views and Anki untouched', 
   }
 });
 
+test('auto-show setting is saved through app-only tools without contacting Anki', async () => {
+  const temporaryDir = await mkdtemp(path.join(tmpdir(), 'anki-autoshow-test-'));
+  const autoShowSettingsPath = path.join(temporaryDir, 'private', 'auto-show.json');
+  let ankiCalls = 0;
+  const createServer = () => {
+    const server = new McpServer({ name: 'anki-autoshow-test', version: '0.1.0' });
+    registerAnkiReviewTools(server, {
+      autoShowSettingsPath,
+      clientFactory: () => { ankiCalls++; throw new Error('Anki should not be accessed.'); },
+    });
+    return server;
+  };
+  const connect = async (server) => {
+    const client = new Client({ name: 'anki-autoshow-test-client', version: '0.1.0' });
+    const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    return client;
+  };
+
+  const firstServer = createServer();
+  const firstClient = await connect(firstServer);
+  try {
+    const listed = await firstClient.listTools();
+    for (const name of ['get_anki_autoshow', 'set_anki_autoshow']) {
+      assert.deepEqual(listed.tools.find((tool) => tool.name === name)._meta.ui.visibility, ['app']);
+    }
+    assert.deepEqual((await firstClient.callTool({ name: 'get_anki_autoshow', arguments: {} })).structuredContent, { mode: 'off' });
+    for (const mode of ['long_tasks', 'every_message', 'off']) {
+      const saved = await firstClient.callTool({ name: 'set_anki_autoshow', arguments: { mode } });
+      assert.deepEqual(saved.structuredContent, { mode });
+      assert.deepEqual((await firstClient.callTool({ name: 'get_anki_autoshow', arguments: {} })).structuredContent, { mode });
+    }
+    const invalid = await firstClient.callTool({ name: 'set_anki_autoshow', arguments: { mode: 'always' } });
+    assert.equal(invalid.isError, true);
+    assert.deepEqual((await firstClient.callTool({ name: 'get_anki_autoshow', arguments: {} })).structuredContent, { mode: 'off' });
+    await firstClient.callTool({ name: 'set_anki_autoshow', arguments: { mode: 'every_message' } });
+  } finally {
+    await Promise.all([firstClient.close(), firstServer.close()]);
+  }
+
+  const secondServer = createServer();
+  const secondClient = await connect(secondServer);
+  try {
+    assert.deepEqual((await secondClient.callTool({ name: 'get_anki_autoshow', arguments: {} })).structuredContent, { mode: 'every_message' });
+    assert.equal(ankiCalls, 0);
+  } finally {
+    await Promise.all([secondClient.close(), secondServer.close()]);
+    await rm(temporaryDir, { recursive: true, force: true });
+  }
+});
+
 test('the view registry stays bounded without evicting a visible view', async () => {
   let time = 0;
   const server = new McpServer({ name: 'anki-view-pruning-test', version: '0.1.0' });

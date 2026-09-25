@@ -1,11 +1,12 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
-const app = new App({ name: 'While Anki review', version: '0.2.0' });
+const app = new App({ name: 'While Anki review', version: '0.3.0' });
 const elements = Object.fromEntries([
   'review-root',
   'deck-panel', 'deck-select', 'start-review', 'resume-review', 'refresh-decks', 'card-panel',
   'deck-name', 'progress', 'question', 'question-media', 'answer', 'answer-text',
   'answer-media', 'reveal-row', 'reveal-answer', 'rating-row', 'choose-deck', 'reload-card', 'status',
+  'autoshow-mode', 'autoshow-status', 'refresh-autoshow',
 ].map((id) => [id, document.getElementById(id)]));
 const el = (id) => elements[id];
 const labels = ['Again', 'Hard', 'Good', 'Easy'];
@@ -14,6 +15,7 @@ const audioSource = /^data:audio\/(?:mpeg|mp3|ogg|wav|mp4|aac|flac);base64,(?=[A
 const sessionKey = 'while-anki-mcp-session-id';
 const pendingKey = 'while-anki-mcp-pending-v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const autoShowModes = new Set(['off', 'long_tasks', 'every_message']);
 
 let connected = false;
 let busy = false;
@@ -25,6 +27,8 @@ let viewId = null;
 let visibilityTimer = null;
 let checkingVisibility = false;
 let dismissed = false;
+let autoShowMode = null;
+let autoShowBusy = false;
 
 function message(text, error = false) {
   if (dismissed) return;
@@ -92,6 +96,64 @@ async function call(name, args) {
     throw new Error(`The ${name} tool returned no usable result.`);
   }
   return result.structuredContent;
+}
+
+function autoShowMessage(text, error = false) {
+  if (dismissed) return;
+  el('autoshow-status').textContent = text;
+  el('autoshow-status').dataset.error = String(error);
+}
+
+function renderAutoShowControls() {
+  if (dismissed) return;
+  el('autoshow-mode').disabled = !connected || autoShowBusy || autoShowMode === null;
+  el('refresh-autoshow').hidden = autoShowMode !== null;
+  el('refresh-autoshow').disabled = !connected || autoShowBusy;
+}
+
+async function loadAutoShow() {
+  if (!connected || autoShowBusy || dismissed) return;
+  autoShowBusy = true;
+  renderAutoShowControls();
+  autoShowMessage('Loading setting…');
+  try {
+    const result = await call('get_anki_autoshow', {});
+    if (!autoShowModes.has(result.mode)) throw new Error('The saved setting is invalid.');
+    if (dismissed) return;
+    autoShowMode = result.mode;
+    el('autoshow-mode').value = autoShowMode;
+    autoShowMessage('Applies to future messages.');
+  } catch (error) {
+    autoShowMessage(`Could not load Auto-show: ${error.message ?? String(error)}`, true);
+  } finally {
+    autoShowBusy = false;
+    renderAutoShowControls();
+  }
+}
+
+async function saveAutoShow() {
+  const mode = el('autoshow-mode').value;
+  if (!connected || autoShowBusy || dismissed || autoShowMode === null ||
+      !autoShowModes.has(mode) || mode === autoShowMode) return;
+  const previous = autoShowMode;
+  autoShowBusy = true;
+  renderAutoShowControls();
+  autoShowMessage('Saving setting…');
+  try {
+    const result = await call('set_anki_autoshow', { mode });
+    if (result.mode !== mode) throw new Error('The saved setting was not confirmed.');
+    if (dismissed) return;
+    autoShowMode = mode;
+    autoShowMessage('Saved. Applies to future messages.');
+  } catch (error) {
+    if (!dismissed) {
+      el('autoshow-mode').value = previous;
+      autoShowMessage(`Could not save Auto-show: ${error.message ?? String(error)}`, true);
+    }
+  } finally {
+    autoShowBusy = false;
+    renderAutoShowControls();
+  }
 }
 
 function addMedia(container, items, side) {
@@ -310,6 +372,8 @@ el('reload-card').addEventListener('click', () => {
   if (!view || busy || pendingRating || dismissed) return;
   void resume(view.sessionId);
 });
+el('autoshow-mode').addEventListener('change', () => void saveAutoShow());
+el('refresh-autoshow').addEventListener('click', () => void loadAutoShow());
 
 function stopVisibilityChecks() {
   if (visibilityTimer !== null) clearInterval(visibilityTimer);
@@ -394,6 +458,7 @@ async function connect() {
     connected = true;
     startVisibilityChecks();
     renderControls();
+    void loadAutoShow();
     if (dismissed) return;
     if (restorePending()) return;
     await loadDecks();
@@ -405,4 +470,5 @@ async function connect() {
 }
 
 renderControls();
+renderAutoShowControls();
 void connect();

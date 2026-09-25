@@ -13,7 +13,7 @@ Review Anki cards inside a Codex desktop conversation while Codex works. Reveal 
    codex plugin add while-anki@llm-anki-convo
    ```
 
-4. Start a **new Codex task** and ask: “Show Anki while you work, then hide it.” Choose a deck in the inline widget. The last deck you used is selected next time when it is still available.
+4. Start a **new Codex task** and ask: “Show Anki while you work, then hide it.” Choose a deck in the inline widget. The last deck you used is selected next time when it is still available. Use the **Auto-show** control in the widget to choose when Anki should appear on future messages.
 
 The GitHub repository and marketplace are both named `llm-anki-convo`; the plugin's install ID is `while-anki`, matching its **While Anki** display name. This marketplace is separate from OpenAI’s universal public Plugins Directory. [Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
 
@@ -30,13 +30,15 @@ The widget can review all available **due and new** cards, including those beyon
 
 ### Show Anki automatically
 
-Installation alone does not automatically open Anki on every prompt. To opt in once across your Codex projects, add this instruction to `~/.codex/AGENTS.md` (create the file if needed):
+Open Anki once, then choose **Auto-show** in the widget:
 
-```text
-For substantive work requests, call show_anki_review as your first tool action after a brief acknowledgment. Keep its returned viewId, then call hide_anki_review with that exact viewId immediately before your final answer, including when the work fails. Skip Anki for brief questions and whenever I say "no Anki". Hiding must not grade a card or clear a pending review.
-```
+- **Off** (default): show Anki only when you ask.
+- **Long tasks**: also show it for work likely to take multiple steps, such as coding, research, or file changes. Skip quick questions and status checks.
+- **Every message**: show it for ordinary messages too, including quick questions.
 
-Start a new Codex task after changing `AGENTS.md`. This is a Codex instruction, not an instant-on plugin setting: the widget appears when Codex makes its first tool call. This repository’s [AGENTS.md](AGENTS.md) has a development-only `off` / `work` / `always` switch; that file is not installed as a global preference for other users.
+The preference is saved locally and applies across future Codex tasks on the same computer. An explicit “no Anki” request overrides it. Codex hides each opened view when its response is finished without grading or abandoning the current card.
+
+Auto-show uses a bundled `UserPromptSubmit` hook. Codex requires you to review and trust plugin hooks once before they run; use `/hooks` in Codex to inspect it if prompted. The hook reads the saved choice and adds a short instruction for Codex. It does not contact Anki or draw the widget itself, so the widget appears at Codex’s first tool call, after processing begins. [Plugin hooks documentation](https://developers.openai.com/plugins/build/plugins#bundled-mcp-servers-and-lifecycle-hooks)
 
 ### Data and permissions
 

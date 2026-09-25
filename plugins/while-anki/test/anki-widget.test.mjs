@@ -49,6 +49,7 @@ function mount(handlers, storage = new Map(), { viewId, hostClose = false } = {}
     }
     querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
     click() { if (!this.hidden && !this.disabled) this.listeners.get('click')?.(); }
+    change() { if (!this.hidden && !this.disabled) this.listeners.get('change')?.(); }
   }
 
   for (const match of html.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bid="([^"]+)"[^>]*)>/gi)) {
@@ -66,8 +67,10 @@ function mount(handlers, storage = new Map(), { viewId, hostClose = false } = {}
     getHostCapabilities() { return { serverTools: {} }; }
     callServerTool(request) {
       calls.push(request);
-      if (!handlers[request.name]) throw new Error(`Unexpected ${request.name}`);
-      return handlers[request.name](request.arguments);
+      const handler = handlers[request.name] ??
+        (request.name === 'get_anki_autoshow' ? () => ok({ mode: 'off' }) : null);
+      if (!handler) throw new Error(`Unexpected ${request.name}`);
+      return handler(request.arguments);
     }
     async sendSizeChanged(size) { sizes.push(size); }
     async requestTeardown() { teardownRequests++; }
@@ -121,6 +124,74 @@ const card = (id, question, answer) => ({
 
 const ok = (structuredContent) => ({ content: [], structuredContent });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const reviewCalls = (ui) => ui.calls.filter(({ name }) =>
+  name !== 'get_anki_autoshow' && name !== 'set_anki_autoshow');
+
+test('Auto-show loads and saves without a working Anki deck connection', async () => {
+  const ui = mount({
+    list_anki_decks: () => ({ isError: true, content: [{ type: 'text', text: 'Anki is closed' }] }),
+    get_anki_autoshow: () => ok({ mode: 'long_tasks' }),
+    set_anki_autoshow: ({ mode }) => ok({ mode }),
+  });
+  await tick();
+  assert.match(ui.node('status').textContent, /Could not load Anki decks/);
+  assert.equal(ui.node('autoshow-mode').value, 'long_tasks');
+  assert.equal(ui.node('autoshow-mode').disabled, false);
+  assert.equal(ui.node('autoshow-panel').hidden, false);
+
+  ui.node('autoshow-mode').value = 'every_message';
+  ui.node('autoshow-mode').change();
+  await tick();
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.at(-1))), {
+    name: 'set_anki_autoshow', arguments: { mode: 'every_message' },
+  });
+  assert.equal(ui.node('autoshow-mode').value, 'every_message');
+  assert.match(ui.node('autoshow-status').textContent, /Saved/);
+  assert.equal(ui.calls.some(({ name }) => name === 'rate_anki_review'), false);
+});
+
+test('Auto-show stays visible on the card panel and reverts a failed change', async () => {
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    start_anki_review: () => ok({ view: card(1, 'Question', 'Answer') }),
+    get_anki_autoshow: () => ok({ mode: 'off' }),
+    set_anki_autoshow: () => ({ isError: true, content: [{ type: 'text', text: 'Cannot save' }] }),
+  });
+  await tick();
+  ui.node('start-review').click();
+  await tick();
+  assert.equal(ui.node('deck-panel').hidden, true);
+  assert.equal(ui.node('card-panel').hidden, false);
+  assert.equal(ui.node('autoshow-panel').hidden, false);
+
+  ui.node('autoshow-mode').value = 'long_tasks';
+  ui.node('autoshow-mode').change();
+  await tick();
+  assert.equal(ui.node('autoshow-mode').value, 'off');
+  assert.equal(ui.node('autoshow-mode').disabled, false);
+  assert.match(ui.node('autoshow-status').textContent, /Could not save Auto-show: Cannot save/);
+  assert.equal(ui.node('autoshow-status').dataset.error, 'true');
+});
+
+test('Auto-show load error can be retried without affecting card review', async () => {
+  let attempts = 0;
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    get_anki_autoshow: () => ++attempts === 1
+      ? { isError: true, content: [{ type: 'text', text: 'Settings unavailable' }] }
+      : ok({ mode: 'every_message' }),
+  });
+  await tick();
+  assert.equal(ui.node('autoshow-mode').disabled, true);
+  assert.equal(ui.node('refresh-autoshow').hidden, false);
+  assert.match(ui.node('autoshow-status').textContent, /Settings unavailable/);
+  ui.node('refresh-autoshow').click();
+  await tick();
+  assert.equal(ui.node('autoshow-mode').value, 'every_message');
+  assert.equal(ui.node('autoshow-mode').disabled, false);
+  assert.equal(ui.node('refresh-autoshow').hidden, true);
+  assert.deepEqual(reviewCalls(ui).map(({ name }) => name), ['list_anki_decks']);
+});
 
 test('preselects the last used deck without starting a review and preserves user choice on refresh', async () => {
   const ui = mount({
@@ -128,13 +199,13 @@ test('preselects the last used deck without starting a review and preserves user
   });
   await tick();
   assert.equal(ui.node('deck-select').value, 'Japanese');
-  assert.deepEqual(ui.calls.map((item) => item.name), ['list_anki_decks']);
+  assert.deepEqual(reviewCalls(ui).map((item) => item.name), ['list_anki_decks']);
 
   ui.node('deck-select').value = 'French';
   ui.node('refresh-decks').click();
   await tick();
   assert.equal(ui.node('deck-select').value, 'French');
-  assert.deepEqual(ui.calls.map((item) => item.name), ['list_anki_decks', 'list_anki_decks']);
+  assert.deepEqual(reviewCalls(ui).map((item) => item.name), ['list_anki_decks', 'list_anki_decks']);
 });
 
 test('ignores a remembered deck that is no longer in the available deck list', async () => {
@@ -171,13 +242,13 @@ test('reveals locally and advances only after a quiet Anki rating is confirmed',
   ui.node('reveal-answer').click();
   assert.equal(ui.node('answer').hidden, false);
   assert.equal(ui.node('answer-text').textContent, 'Answer');
-  assert.deepEqual(ui.calls.map((item) => item.name), ['list_anki_decks', 'start_anki_review']);
+  assert.deepEqual(reviewCalls(ui).map((item) => item.name), ['list_anki_decks', 'start_anki_review']);
 
   ui.node('rating-row').children[2].click();
   await tick();
   assert.equal(ui.node('question').textContent, '<b>Question</b>', 'An unconfirmed call cannot advance the card.');
-  assert.equal(ui.calls[2].name, 'rate_anki_review');
-  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls[2].arguments)), {
+  assert.equal(reviewCalls(ui)[2].name, 'rate_anki_review');
+  assert.deepEqual(JSON.parse(JSON.stringify(reviewCalls(ui)[2].arguments)), {
     sessionId: first.sessionId, cardId: first.cardId, nonce: first.nonce, ease: 3,
   });
 
@@ -214,7 +285,7 @@ test('a failed rating keeps the same card and retries the same grade', async () 
   assert.match(ui.node('status').textContent, /Rating was not confirmed/);
   ui.node('rating-row').children[0].click();
   await tick();
-  assert.deepEqual(ui.calls[2].arguments, ui.calls[3].arguments);
+  assert.deepEqual(reviewCalls(ui)[2].arguments, reviewCalls(ui)[3].arguments);
   assert.equal(ui.node('question').textContent, 'Second');
 });
 
@@ -239,14 +310,14 @@ test('a remounted card restores only the exact unconfirmed rating for manual ret
     rate_anki_review: () => ok({ recorded: true, view: second }),
   }, storage);
   await tick();
-  assert.deepEqual(restored.calls, [], 'Remount never grades automatically.');
+  assert.deepEqual(reviewCalls(restored), [], 'Remount never grades automatically.');
   assert.equal(restored.node('question').textContent, 'First');
   assert.equal(restored.node('answer').hidden, false);
   assert.deepEqual(restored.node('rating-row').children.map((item) => item.disabled), [true, true, true, false]);
   restored.node('rating-row').children[3].click();
   await tick();
-  assert.equal(restored.calls[0].name, 'rate_anki_review');
-  assert.equal(restored.calls[0].arguments.ease, 4);
+  assert.equal(reviewCalls(restored)[0].name, 'rate_anki_review');
+  assert.equal(reviewCalls(restored)[0].arguments.ease, 4);
   assert.equal(restored.node('question').textContent, 'Second');
   assert.equal(storage.has('while-anki-mcp-pending-v1'), false);
 });

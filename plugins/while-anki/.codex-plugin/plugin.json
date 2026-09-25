@@ -1,6 +1,6 @@
 {
   "name": "while-anki",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Review Anki cards in Codex while it works.",
   "author": {
     "name": "gustanas",
@@ -12,7 +12,7 @@
   "interface": {
     "displayName": "While Anki",
     "shortDescription": "Review Anki while Codex works.",
-    "longDescription": "Review due and new Anki cards inside Codex desktop while it works. Ratings are recorded through local AnkiConnect, and the next card appears without posting a chat message. Requires Anki, AnkiConnect, and Node.js 22 or newer on the same computer.",
+    "longDescription": "Review due and new Anki cards inside Codex desktop while it works. Ratings are recorded through local AnkiConnect, and the next card appears without posting a chat message. Choose Off, Long tasks, or Every message for automatic showing. Requires Anki, AnkiConnect, and Node.js 22 or newer on the same computer.",
     "developerName": "gustanas",
     "category": "Productivity",
     "capabilities": [

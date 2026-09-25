@@ -37,6 +37,7 @@
     .media audio { width: 100%; }
     #status { min-height: 1.4em; overflow-wrap: anywhere; }
     #status[data-error="true"] { color: #b93838; }
+    #autoshow-status[data-error="true"] { color: #b93838; }
     [hidden] { display: none !important; }
     @media (max-width: 460px) { .ratings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   </style>
@@ -76,6 +77,20 @@
       <div class="controls">
         <button id="choose-deck" class="quiet" type="button">Choose another deck</button>
         <button id="reload-card" class="quiet" type="button">Reload card</button>
+      </div>
+    </section>
+
+    <section id="autoshow-panel" class="card" aria-label="Auto-show settings">
+      <label for="autoshow-mode">Auto-show</label>
+      <p class="muted">When should Anki appear on future messages?</p>
+      <select id="autoshow-mode" disabled>
+        <option value="off">Off</option>
+        <option value="long_tasks">Long tasks</option>
+        <option value="every_message">Every message</option>
+      </select>
+      <div class="row">
+        <p id="autoshow-status" class="muted" role="status" aria-live="polite">Loading setting…</p>
+        <button id="refresh-autoshow" class="quiet" type="button" hidden>Retry</button>
       </div>
     </section>
 

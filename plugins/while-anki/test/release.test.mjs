@@ -19,11 +19,12 @@ test('release runs from an isolated plugin folder without source, node_modules, 
     copyFile(path.join(ROOT, 'assets', 'anki-widget.js'), path.join(assets, 'anki-widget.js')),
   ]);
 
-  const client = new Client({ name: 'while-anki-release-test', version: '0.2.0' });
+  const client = new Client({ name: 'while-anki-release-test', version: '0.3.0' });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [path.join(isolated, 'server.bundle.mjs')],
     cwd: isolated,
+    env: { ...process.env, WHILE_ANKI_DATA_DIR: isolated },
     stderr: 'pipe',
   });
   const stderr = [];
@@ -35,10 +36,15 @@ test('release runs from an isolated plugin folder without source, node_modules, 
     const tools = await client.listTools();
     const show = tools.tools.find(({ name }) => name === 'show_anki_review');
     assert.ok(show, 'release exposes the Anki launcher');
+    assert.deepEqual(tools.tools.find(({ name }) => name === 'get_anki_autoshow')._meta.ui.visibility, ['app']);
+    assert.deepEqual(tools.tools.find(({ name }) => name === 'set_anki_autoshow')._meta.ui.visibility, ['app']);
     assert.equal(tools.tools.some(({ name }) => name === 'show_probe' || name === 'increment_probe'), false);
     const resource = await client.readResource({ uri: show._meta.ui.resourceUri });
     assert.match(resource.contents[0].text, /Show answer/);
     assert.doesNotMatch(resource.contents[0].text, /__ANKI_BUNDLE__/);
+
+    const setting = await client.callTool({ name: 'get_anki_autoshow', arguments: {} });
+    assert.deepEqual(setting.structuredContent, { mode: 'off' });
 
     const opened = await client.callTool({ name: 'show_anki_review', arguments: {} });
     assert.equal(opened.structuredContent.status, 'ready');
