@@ -1,14 +1,14 @@
 {
-  "name": "while-anki",
+  "name": "llm-anki-convo",
   "interface": {
     "displayName": "While Anki"
   },
   "plugins": [
     {
-      "name": "mcp-apps-probe",
+      "name": "while-anki",
       "source": {
         "source": "local",
-        "path": "./plugins/mcp-apps-probe"
+        "path": "./plugins/while-anki"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -11,12 +11,21 @@ While Anki shows your Anki reviews in a Codex desktop conversation while Codex w
 
    ```sh
    codex plugin marketplace add gustanas/llm-anki-convo
-   codex plugin add mcp-apps-probe@while-anki
+   codex plugin add while-anki@llm-anki-convo
    ```
 
 5. Start a **new Codex task** and ask: “Show Anki while you work, then hide it.” Choose a deck in the widget; the last deck used is preselected next time if it is still available.
 
-The plugin is displayed as **While Anki**; `mcp-apps-probe` remains its technical install ID. The installation includes the built server and widget assets, so users do not need to clone the repository or run `npm ci` or `npm run build`. This GitHub marketplace is distinct from OpenAI’s universal public Plugins Directory. [Marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+The repository and marketplace are named `llm-anki-convo`; the plugin's install ID is `while-anki`, matching its **While Anki** display name. The installation includes the built server and widget assets, so users do not need to clone the repository or run `npm ci` or `npm run build`. This GitHub marketplace is distinct from OpenAI’s universal public Plugins Directory. [Marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+
+If you installed the earlier `mcp-apps-probe@while-anki` version, remove that plugin and its old marketplace before running the new install commands:
+
+```sh
+codex plugin remove mcp-apps-probe@while-anki
+codex plugin marketplace remove while-anki
+```
+
+Your saved deck and review sessions remain in the same local data directory.
 
 ## Review behavior
 
@@ -46,4 +55,4 @@ npm run build
 npm test
 ```
 
-The harmless `show_probe` counter widget is available for diagnosing direct app-to-server calls. Its **Increment server count** button updates the counter without sending a chat message or touching Anki. The tests use local fixtures and never rate cards in your Anki collection.
+The tests use local fixtures and never rate cards in your Anki collection.

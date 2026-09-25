@@ -1,6 +1,6 @@
 {
-  "name": "mcp-apps-probe",
-  "version": "0.1.0",
+  "name": "while-anki",
+  "version": "0.2.0",
   "description": "Review Anki cards in Codex while it works.",
   "author": {
     "name": "gustanas",

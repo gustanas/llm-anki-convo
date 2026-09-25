@@ -6,7 +6,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 await build({
   absWorkingDir: ROOT,
-  entryPoints: ['src/widget.js', 'src/anki-widget.js'],
+  entryPoints: ['src/anki-widget.js'],
   outdir: 'assets',
   bundle: true,
   format: 'iife',

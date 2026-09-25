@@ -10,12 +10,21 @@ Review Anki cards inside a Codex desktop conversation while Codex works. Reveal 
 
    ```sh
    codex plugin marketplace add gustanas/llm-anki-convo
-   codex plugin add mcp-apps-probe@while-anki
+   codex plugin add while-anki@llm-anki-convo
    ```
 
 4. Start a **new Codex task** and ask: “Show Anki while you work, then hide it.” Choose a deck in the inline widget. The last deck you used is selected next time when it is still available.
 
-The plugin is listed as **While Anki** in its GitHub marketplace; `mcp-apps-probe` is its current technical install ID. This marketplace is separate from OpenAI’s universal public Plugins Directory. [Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+The GitHub repository and marketplace are both named `llm-anki-convo`; the plugin's install ID is `while-anki`, matching its **While Anki** display name. This marketplace is separate from OpenAI’s universal public Plugins Directory. [Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+
+If you installed the earlier `mcp-apps-probe@while-anki` version, remove that plugin and its old marketplace before running the new install commands:
+
+```sh
+codex plugin remove mcp-apps-probe@while-anki
+codex plugin marketplace remove while-anki
+```
+
+Your saved deck and review sessions remain in the same local data directory.
 
 The widget can review all available **due and new** cards, including those beyond Anki’s daily cap. Future, suspended, and buried cards are excluded. Ratings change your real Anki schedule. If Anki cannot confirm a rating, the current card stays in place for a safe retry.
 
@@ -33,7 +42,7 @@ Start a new Codex task after changing `AGENTS.md`. This is a Codex instruction, 
 
 The local MCP server talks to AnkiConnect on loopback. Card text and supported media are shown inside Codex; the last-deck preference, review session data, and rating receipts are stored locally. The plugin does not need an account or a hosted service. Keep generated card files and session data out of Git. You can set `ANKI_CONNECT_URL` for a different local address or `ANKI_CONNECT_KEY` if your AnkiConnect setup uses an API key; only loopback HTTP endpoints are accepted.
 
-See the [plugin guide](plugins/mcp-apps-probe/README.md) for development and troubleshooting.
+See the [plugin guide](plugins/while-anki/README.md) for development and troubleshooting.
 
 ## Legacy CLI and practice quiz
 

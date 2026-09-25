@@ -15,13 +15,11 @@ test('release runs from an isolated plugin folder without source, node_modules, 
   await mkdir(assets);
   await Promise.all([
     copyFile(path.join(ROOT, 'server.bundle.mjs'), path.join(isolated, 'server.bundle.mjs')),
-    copyFile(path.join(ROOT, 'widget.html'), path.join(isolated, 'widget.html')),
     copyFile(path.join(ROOT, 'anki-widget.html'), path.join(isolated, 'anki-widget.html')),
-    copyFile(path.join(ROOT, 'assets', 'widget.js'), path.join(assets, 'widget.js')),
     copyFile(path.join(ROOT, 'assets', 'anki-widget.js'), path.join(assets, 'anki-widget.js')),
   ]);
 
-  const client = new Client({ name: 'while-anki-release-test', version: '0.1.0' });
+  const client = new Client({ name: 'while-anki-release-test', version: '0.2.0' });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [path.join(isolated, 'server.bundle.mjs')],
@@ -37,6 +35,7 @@ test('release runs from an isolated plugin folder without source, node_modules, 
     const tools = await client.listTools();
     const show = tools.tools.find(({ name }) => name === 'show_anki_review');
     assert.ok(show, 'release exposes the Anki launcher');
+    assert.equal(tools.tools.some(({ name }) => name === 'show_probe' || name === 'increment_probe'), false);
     const resource = await client.readResource({ uri: show._meta.ui.resourceUri });
     assert.match(resource.contents[0].text, /Show answer/);
     assert.doesNotMatch(resource.contents[0].text, /__ANKI_BUNDLE__/);

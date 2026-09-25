@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { createAnkiConnect } from '../../lib/anki-connect.mjs';
 import { rateReview, resumeReview, startReview, ratingName } from './anki-review-runtime.mjs';
 
-export const ANKI_RESOURCE_URI = 'ui://mcp-apps-probe/anki-review-v3.html';
+export const ANKI_RESOURCE_URI = 'ui://while-anki/anki-review-v3.html';
 const HIDDEN_VIEW_TTL_MS = 60 * 60 * 1000;
 const IDLE_VIEW_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_VIEWS = 256;
