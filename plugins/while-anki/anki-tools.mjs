@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { createAnkiConnect } from '../../lib/anki-connect.mjs';
 import { rateReview, resumeReview, startReview, ratingName } from './anki-review-runtime.mjs';
 import { readAutoShowMode, resolveAutoShowSettingsPath, writeAutoShowMode } from './auto-show-settings.mjs';
+import { isViewMarkedHidden, markViewHidden, resolveViewLifecycleDir } from './view-lifecycle.mjs';
 
 export const ANKI_RESOURCE_URI = 'ui://while-anki/anki-review-v3.html';
 const HIDDEN_VIEW_TTL_MS = 60 * 60 * 1000;
@@ -89,6 +90,7 @@ export function registerAnkiReviewTools(server, {
   sessionDir = path.join(dataDir, 'review-sessions'),
   preferencesPath = path.join(dataDir, 'last-deck.json'),
   autoShowSettingsPath = resolveAutoShowSettingsPath(),
+  viewLifecycleDir = resolveViewLifecycleDir(autoShowSettingsPath),
   reviewApi = { startReview, resumeReview, rateReview },
   now = Date.now,
   maxViews = MAX_VIEWS,
@@ -131,14 +133,27 @@ export function registerAnkiReviewTools(server, {
   }, async () => asToolResult(async () => {
     const at = now();
     pruneViews(at);
-    // Hidden widgets no longer need a registry entry. Never evict a visible
-    // view merely because another one was opened.
+    // The Stop/Interrupt hook can close a widget after its iframe unmounts,
+    // leaving no visibility poll to update this in-memory registry. Reconcile
+    // those disk markers before applying the capacity limit. Never evict an
+    // unmarked visible view merely because another one was opened.
     for (const [id, state] of views) {
       if (views.size < maxViews) break;
-      if (state.hidden) views.delete(id);
+      if (state.hidden || await isViewMarkedHidden(viewLifecycleDir, id).catch(() => false)) {
+        views.delete(id);
+      }
     }
     if (views.size >= maxViews) throw new Error('Too many Anki review views are open. Hide an older view and try again.');
-    const viewId = randomUUID();
+    let viewId = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = randomUUID();
+      if (views.has(candidate)) continue;
+      // A UUID is extremely unlikely to repeat, but an old marker must never
+      // hide a new widget if one does. Marker failures do not block Anki.
+      const previouslyHidden = await isViewMarkedHidden(viewLifecycleDir, candidate).catch(() => false);
+      if (!previouslyHidden) { viewId = candidate; break; }
+    }
+    if (!viewId) throw new Error('Could not create a fresh Anki review view.');
     views.set(viewId, { hidden: false, lastSeenAt: at, hiddenAt: null });
     return success({ status: 'ready', viewId }, 'Anki review is ready. Select a deck in the inline card.');
   }));
@@ -155,6 +170,9 @@ export function registerAnkiReviewTools(server, {
       state.hidden = true;
       state.hiddenAt = now();
     }
+    // The marker survives an MCP server restart before the widget's next
+    // visibility poll. Storage failure cannot undo a successful in-memory hide.
+    await markViewHidden(viewLifecycleDir, viewId).catch(() => {});
     return success({ viewId, hidden: true }, 'Anki review view hidden.');
   }));
 
@@ -165,6 +183,18 @@ export function registerAnkiReviewTools(server, {
     outputSchema: z.object({ viewId: uuid, hidden: z.boolean() }),
     _meta: { ui: { visibility: ['app'] } },
   }, async ({ viewId }) => asToolResult(async () => {
+    // Stop/Interrupt hooks write this marker for only the turn that opened the
+    // view. A restarted server can still tell its widget to close on its next
+    // visibility poll, without touching the underlying Anki review session.
+    const markedHidden = await isViewMarkedHidden(viewLifecycleDir, viewId).catch(() => false);
+    if (markedHidden) {
+      const state = views.get(viewId);
+      if (state && !state.hidden) {
+        state.hidden = true;
+        state.hiddenAt = now();
+      }
+      return success({ viewId, hidden: true }, 'This view is hidden.');
+    }
     const state = requireView(viewId);
     if (!state.hidden) state.lastSeenAt = now();
     return success({ viewId, hidden: state.hidden }, state.hidden ? 'This view is hidden.' : 'This view is visible.');
@@ -230,18 +260,22 @@ export function registerAnkiReviewTools(server, {
 
   registerAppTool(server, 'rate_anki_review', {
     title: 'Save one Anki rating',
-    description: 'Save the user-selected rating for exactly the active card, then return the next card.',
+    description: 'Save the user-selected rating for exactly the active card, then return the next card or a safe refresh if a rating cannot be attributed.',
     inputSchema: z.object({
       sessionId: uuid,
       cardId: z.number().int().positive(),
       nonce: uuid,
       ease: z.number().int().min(1).max(4),
     }).strict(),
-    outputSchema: z.object({ recorded: z.literal(true), rating: z.string(), view: z.unknown(), warnings: z.array(z.string()) }),
+    outputSchema: z.object({ recorded: z.boolean(), rating: z.string().optional(), view: z.unknown(), warnings: z.array(z.string()) }),
     _meta: { ui: { visibility: ['app'] } },
   }, async ({ sessionId, cardId, nonce, ease }) => asToolResult(async () => {
     const result = await reviewApi.rateReview({ client: clientFactory({ reviewWrites: true }), sessionId, cardId, nonce, ease, sessionDir });
-    if (result?.recorded !== true || !result.view) throw new Error('Anki did not confirm the new review. Keep this card and retry the same rating.');
+    if (!result?.view || typeof result.recorded !== 'boolean') throw new Error('Anki returned no usable review state. Keep this card and retry the same rating.');
+    if (!result.recorded) {
+      return success({ recorded: false, view: result.view, warnings: result.warnings },
+        'The rating was not confirmed here; review refreshed without sending a duplicate grade.');
+    }
     await rememberDeck(result);
     return success({ recorded: true, rating: ratingName(ease), view: result.view, warnings: result.warnings }, `Saved ${ratingName(ease)} in Anki.`);
   }));

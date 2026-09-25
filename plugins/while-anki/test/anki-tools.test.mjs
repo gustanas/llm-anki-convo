@@ -120,7 +120,8 @@ test('last used deck survives server restart and changes only after successful r
     assert.equal(await list(), 'Science');
 
     const ratingArgs = { sessionId: SESSION, cardId: 42, nonce: NONCE, ease: 3 };
-    assert.equal((await client.callTool({ name: 'rate_anki_review', arguments: ratingArgs })).isError, true);
+    const refreshed = await client.callTool({ name: 'rate_anki_review', arguments: ratingArgs });
+    assert.equal(refreshed.structuredContent.recorded, false);
     assert.equal(await list(), 'Science');
     confirmRating = true;
     assert.equal((await client.callTool({ name: 'rate_anki_review', arguments: ratingArgs })).structuredContent.recorded, true);
@@ -175,9 +176,11 @@ test('a preference write failure does not hide an Anki-confirmed rating', async 
 });
 
 test('hiding one view is idempotent and leaves other views and Anki untouched', async () => {
+  const temporaryDir = await mkdtemp(path.join(tmpdir(), 'anki-view-state-test-'));
   let ankiCalls = 0;
   const server = new McpServer({ name: 'anki-view-state-test', version: '0.1.0' });
   registerAnkiReviewTools(server, {
+    viewLifecycleDir: path.join(temporaryDir, 'view-lifecycle'),
     clientFactory: () => { ankiCalls++; throw new Error('Anki should not be accessed.'); },
     reviewApi: {
       startReview: async () => { ankiCalls++; throw new Error('Review should not start.'); },
@@ -214,6 +217,7 @@ test('hiding one view is idempotent and leaves other views and Anki untouched', 
     assert.equal(ankiCalls, 0);
   } finally {
     await Promise.all([client.close(), server.close()]);
+    await rm(temporaryDir, { recursive: true, force: true });
   }
 });
 
@@ -269,9 +273,13 @@ test('auto-show setting is saved through app-only tools without contacting Anki'
 });
 
 test('the view registry stays bounded without evicting a visible view', async () => {
+  const temporaryDir = await mkdtemp(path.join(tmpdir(), 'anki-view-pruning-test-'));
   let time = 0;
   const server = new McpServer({ name: 'anki-view-pruning-test', version: '0.1.0' });
-  registerAnkiReviewTools(server, { now: () => time, maxViews: 2 });
+  registerAnkiReviewTools(server, {
+    now: () => time, maxViews: 2,
+    viewLifecycleDir: path.join(temporaryDir, 'view-lifecycle'),
+  });
   const client = new Client({ name: 'anki-view-pruning-test-client', version: '0.1.0' });
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -286,13 +294,13 @@ test('the view registry stays bounded without evicting a visible view', async ()
 
     await client.callTool({ name: 'hide_anki_review', arguments: { viewId: first } });
     const third = (await show()).structuredContent.viewId;
-    assert.equal((await get(first)).isError, true, 'A hidden view can be pruned to make room.');
+    assert.equal((await get(first)).structuredContent.hidden, true, 'A hidden view remains closed after its registry entry is pruned.');
     assert.equal((await get(second)).structuredContent.hidden, false);
     assert.equal((await get(third)).structuredContent.hidden, false);
 
     await client.callTool({ name: 'hide_anki_review', arguments: { viewId: second } });
     time += 60 * 60 * 1000 + 1;
-    assert.equal((await get(second)).isError, true, 'Hidden entries expire after one hour.');
+    assert.equal((await get(second)).structuredContent.hidden, true, 'A persisted hide survives registry expiry.');
     assert.equal((await get(third)).structuredContent.hidden, false);
     const fourth = (await show()).structuredContent.viewId;
     assert.notEqual(fourth, third);
@@ -304,6 +312,7 @@ test('the view registry stays bounded without evicting a visible view', async ()
     assert.equal((await get(fourth)).isError, true, 'An unpolled visible view expires after one idle day.');
   } finally {
     await Promise.all([client.close(), server.close()]);
+    await rm(temporaryDir, { recursive: true, force: true });
   }
 });
 
@@ -331,9 +340,11 @@ test('a failed review tool response never reports the rating as saved', async ()
     assert.match(failed.content[0].text, /did not confirm/);
     returnUnconfirmed = true;
     const unconfirmed = await client.callTool({ name: 'rate_anki_review', arguments: { sessionId: SESSION, cardId: 42, nonce: NONCE, ease: 3 } });
-    assert.equal(unconfirmed.isError, true);
-    assert.equal(unconfirmed.structuredContent, undefined);
-    assert.match(unconfirmed.content[0].text, /did not confirm/);
+    assert.notEqual(unconfirmed.isError, true);
+    assert.equal(unconfirmed.structuredContent.recorded, false);
+    assert.deepEqual(unconfirmed.structuredContent.view, firstView);
+    assert.equal(unconfirmed.structuredContent.rating, undefined);
+    assert.match(unconfirmed.content[0].text, /not confirmed/);
   } finally {
     await Promise.all([client.close(), server.close()]);
   }

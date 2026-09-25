@@ -141,6 +141,71 @@ test('single rendered audio players resolve conventional fields and ambiguous pl
   assert.match(result.warnings.join(' '), /could not be resolved/);
 });
 
+test('Basic card player tokens recover local sound from their sole original field', async () => {
+  const requested = [];
+  const result = await normalizeAnkiCards([
+    rawCard({
+      question: 'Listen [anki:play:q:0]',
+      answer: 'Listen [anki:play:q:0]<hr id="answer">Translation',
+      fields: { Front: field('Listen [sound:front.wav]'), Back: field('Translation') },
+    }),
+    rawCard({
+      cardId: 2,
+      question: 'Prompt',
+      answer: 'Prompt<hr id="answer">Pronunciation [anki:play:a:0]',
+      fields: { Front: field('Prompt'), Back: field('Pronunciation [sound:back.mp3]') },
+    }),
+  ], { retrieveMediaFile: async (name) => { requested.push(name); return base64('audio'); } });
+  assert.deepEqual(requested, ['front.wav', 'back.mp3']);
+  assert.deepEqual(result.cards[0].media.question.map((item) => item.type), ['audio']);
+  assert.deepEqual(result.cards[0].media.answer, []);
+  assert.deepEqual(result.cards[1].media.question, []);
+  assert.deepEqual(result.cards[1].media.answer.map((item) => item.type), ['audio']);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('stock Basic cards map separate Front and Back sounds to their rendered sides', async () => {
+  const requested = [];
+  const result = await normalizeAnkiCards([
+    rawCard({
+      modelName: 'Basic',
+      question: 'Listen [anki:play:q:0]',
+      answer: 'Listen [anki:play:q:0]<hr id="answer">Meaning [anki:play:a:0]',
+      fields: { Front: field('Listen [sound:front.wav]'), Back: field('Meaning [sound:back.mp3]') },
+    }),
+    rawCard({
+      cardId: 2,
+      modelName: 'Custom',
+      question: 'Listen [anki:play:q:0]',
+      fields: { Front: field('[sound:custom-front.wav]'), Back: field('[sound:custom-back.mp3]') },
+    }),
+  ], { retrieveMediaFile: async (name) => { requested.push(name); return base64('audio'); } });
+  assert.deepEqual(requested, ['front.wav', 'back.mp3']);
+  assert.equal(result.cards[0].media.question.length, 1);
+  assert.equal(result.cards[0].media.answer.length, 1);
+  assert.deepEqual(result.cards[1].media.question, [], 'Unknown templates with two possible files are not guessed.');
+  assert.match(result.warnings.join(' '), /could not be resolved/);
+});
+
+test('rendered and raw references cannot create duplicate players or load remote files', async () => {
+  const requested = [];
+  const result = await normalizeAnkiCards([
+    rawCard({
+      question: '[anki:play:q:0]<audio src="voice%2Ewav"></audio><audio src="voice.wav"></audio>Listen',
+      fields: { Front: field('[sound:voice.wav]Listen') },
+    }),
+    rawCard({
+      cardId: 2,
+      question: '[anki:play:q:0]Listen',
+      fields: { Front: field('[sound:https://example.test/remote.wav]Listen') },
+    }),
+  ], { retrieveMediaFile: async (name) => { requested.push(name); return base64('audio'); } });
+  assert.deepEqual(requested, ['voice.wav']);
+  assert.equal(result.cards[0].media.question.length, 1);
+  assert.equal(result.cards[1].media.question.length, 0);
+  assert.match(result.warnings.join(' '), /remote or unsupported media/);
+});
+
 test('normalizer validates options and skips malformed raw cards', async () => {
   await assert.rejects(normalizeAnkiCards(null), /cardsInfo array/);
   await assert.rejects(normalizeAnkiCards([], { limit: 101 }), /between 1 and 100/);

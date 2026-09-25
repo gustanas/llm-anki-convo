@@ -260,7 +260,71 @@ test('reveals locally and advances only after a quiet Anki rating is confirmed',
   assert.doesNotMatch(script, /sendFollowUpMessage/);
 });
 
-test('a failed rating keeps the same card and retries the same grade', async () => {
+test('shows skipped media warnings with the card and clears them on the next card', async () => {
+  const first = card(1, 'Question', 'Answer');
+  const second = card(2, 'Next', 'Answer');
+  const warning = 'Skipped unsupported media: <img src="https://example.com/private">';
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    start_anki_review: () => ok({ view: first, warnings: [warning] }),
+    rate_anki_review: () => ok({ recorded: true, view: second, warnings: [] }),
+  });
+  await tick();
+  ui.node('start-review').click();
+  await tick();
+  assert.equal(ui.node('warnings-panel').hidden, false);
+  assert.equal(ui.node('warnings-list').children[0].textContent, warning);
+  assert.equal(ui.node('warnings-list').children[0].children.length, 0);
+
+  ui.node('reveal-answer').click();
+  ui.node('rating-row').children[2].click();
+  await tick();
+  assert.equal(ui.node('warnings-panel').hidden, true);
+  assert.equal(ui.node('warnings-list').children.length, 0);
+});
+
+test('shows warnings when an existing review is resumed', async () => {
+  const first = card(1, 'Question', 'Answer');
+  const storage = new Map([['while-anki-mcp-session-id', first.sessionId]]);
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    resume_anki_review: () => ok({ view: first, warnings: ['Some audio files were missing.'] }),
+  }, storage);
+  await tick();
+  await tick();
+  assert.equal(ui.node('question').textContent, 'Question');
+  assert.equal(ui.node('warnings-panel').hidden, false);
+  assert.match(ui.node('warnings-list').textContent, /audio files were missing/);
+});
+
+test('an external Anki change refreshes the card without claiming or retrying a rating', async () => {
+  const first = card(1, 'Question', 'Answer');
+  const second = card(2, 'Different active card', 'Different answer');
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    start_anki_review: () => ok({ view: first, warnings: [] }),
+    rate_anki_review: () => ok({
+      recorded: false,
+      view: second,
+      warnings: ['The active card changed in Anki. Review refreshed; no rating was saved here.'],
+    }),
+  });
+  await tick();
+  ui.node('start-review').click();
+  await tick();
+  ui.node('reveal-answer').click();
+  ui.node('rating-row').children[0].click();
+  await tick();
+  assert.equal(ui.node('question').textContent, 'Different active card');
+  assert.equal(ui.node('answer').hidden, true);
+  assert.equal(ui.node('reload-card').disabled, false);
+  assert.equal(ui.storage.has('while-anki-mcp-pending-v1'), false);
+  assert.match(ui.node('status').textContent, /rating was not confirmed here/);
+  assert.equal(ui.node('warnings-panel').hidden, false);
+  assert.equal(reviewCalls(ui).filter(({ name }) => name === 'rate_anki_review').length, 1);
+});
+
+test('a failed rating keeps the same card and checks the same selected grade', async () => {
   const first = card(1, 'First', 'Answer');
   const second = card(2, 'Second', 'Answer');
   let attempts = 0;
@@ -283,10 +347,31 @@ test('a failed rating keeps the same card and retries the same grade', async () 
   assert.equal(ui.node('question').textContent, 'First');
   assert.equal(ui.node('rating-row').children[2].disabled, true);
   assert.match(ui.node('status').textContent, /Rating was not confirmed/);
+  assert.equal(ui.node('rating-row').children[0].querySelector('span').textContent, 'Check Again');
   ui.node('rating-row').children[0].click();
   await tick();
   assert.deepEqual(reviewCalls(ui)[2].arguments, reviewCalls(ui)[3].arguments);
   assert.equal(ui.node('question').textContent, 'Second');
+});
+
+test('an uncertain in-flight Anki grade never prompts another send', async () => {
+  const ui = mount({
+    list_anki_decks: () => ok({ decks: ['Japanese'] }),
+    start_anki_review: () => ok({ view: card(1, 'Question', 'Answer') }),
+    rate_anki_review: () => ({ isError: true, content: [{
+      type: 'text', text: 'The previous rating may still finish in Anki. No second grade was sent. Check this card in Anki.',
+    }] }),
+  });
+  await tick();
+  ui.node('start-review').click();
+  await tick();
+  ui.node('reveal-answer').click();
+  ui.node('rating-row').children[2].click();
+  await tick();
+  assert.equal(ui.node('question').textContent, 'Question');
+  assert.match(ui.node('status').textContent, /may still finish in Anki/);
+  assert.doesNotMatch(ui.node('status').textContent, /Tap Check/);
+  assert.equal(ui.node('rating-row').children[2].querySelector('span').textContent, 'Check Good');
 });
 
 test('a remounted card restores only the exact unconfirmed rating for manual retry', async () => {

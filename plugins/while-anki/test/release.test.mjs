@@ -19,7 +19,7 @@ test('release runs from an isolated plugin folder without source, node_modules, 
     copyFile(path.join(ROOT, 'assets', 'anki-widget.js'), path.join(assets, 'anki-widget.js')),
   ]);
 
-  const client = new Client({ name: 'while-anki-release-test', version: '0.3.0' });
+  const client = new Client({ name: 'while-anki-release-test', version: '0.4.0' });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [path.join(isolated, 'server.bundle.mjs')],

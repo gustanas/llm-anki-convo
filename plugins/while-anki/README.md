@@ -31,7 +31,7 @@ Your saved deck and review sessions remain in the same local data directory.
 
 The widget includes every available **due and new** card in the chosen deck, even past its daily cap. Future, suspended, and buried cards are excluded. It loads one card at a time, so there is no fixed card-count limit. Anki supplies the interval labels and records each rating in its review history. **Rating a card changes its real Anki schedule.**
 
-The widget uses app-only MCP tools to list decks, start or resume a review, and submit a rating. These calls do not create a new chat message. The server verifies the active session, card, nonce, and Anki review history before confirming a rating. If Anki is unavailable or a grade cannot be confirmed, the current card stays visible; reopen Anki and retry the same rating.
+The widget uses app-only MCP tools to list decks, start or resume a review, and submit a rating. These calls do not create a new chat message. The server checks the active session, card, and nonce before grading. If a rating request loses its response, **Check Again** checks Anki without sending another grade while the first request might still finish. If Anki later confirms a card change, the widget refreshes; if the outcome stays uncertain, review that card in Anki. Missing or unsupported media is reported beside the card so you can review that content in Anki.
 
 The model-visible `show_anki_review` tool opens the widget and returns a `viewId`. `hide_anki_review` hides that exact view before the final answer. Hiding clears the rendered card and asks the host to close the widget. It does not grade a card, end the review session, or discard a pending rating. Codex may retain the tool-result header, but the widget’s one-pixel minimum frame height lets the blank area collapse.
 
@@ -45,7 +45,7 @@ The widget has a saved **Auto-show** control with three choices:
 
 The choice applies to future messages on the same computer. An explicit request for no Anki takes precedence. Every view opened by Codex should be hidden after its response, without grading a card or clearing the pending review.
 
-Auto-show uses the plugin’s bundled `UserPromptSubmit` hook, which reads the saved preference and adds a short instruction to Codex. Codex requires a one-time review and trust decision before running a plugin hook; inspect it with `/hooks` if prompted. The hook itself neither contacts Anki nor renders the widget. Codex opens the widget on its first tool call after it starts processing the message, so some Thinking time can precede it. [Plugin hook documentation](https://developers.openai.com/plugins/build/plugins#bundled-mcp-servers-and-lifecycle-hooks)
+Auto-show uses the plugin’s bundled `UserPromptSubmit` hook, which reads the saved preference and adds a short instruction to Codex. `PostToolUse` records which view was opened in the current turn; `Stop` and `Interrupt` then request that specific view to close if Codex did not hide it first. These hooks never grade a card or clear a review session. Codex requires you to review and trust new or changed plugin hooks before they run; inspect them with `/hooks` if prompted. Hooks cannot directly mount an MCP App, so Codex opens the widget on its first tool call after processing begins and some Thinking time can precede it. Closing still depends on the host honoring the widget’s teardown request. [Codex hook documentation](https://developers.openai.com/codex/hooks)
 
 ## Configuration and privacy
 
@@ -63,4 +63,4 @@ npm run build
 npm test
 ```
 
-The tests use local fixtures and never rate cards in your Anki collection.
+The default tests use local fixtures and never rate cards in your Anki collection. With Anki open, run the opt-in `npm run smoke:live -- --run` to create a uniquely named disposable deck, review its cards through the MCP tools, verify the resulting Anki history, and remove the test deck and media. It never chooses a card from an existing deck.

@@ -1,11 +1,12 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
-const app = new App({ name: 'While Anki review', version: '0.3.0' });
+const app = new App({ name: 'While Anki review', version: '0.4.0' });
 const elements = Object.fromEntries([
   'review-root',
   'deck-panel', 'deck-select', 'start-review', 'resume-review', 'refresh-decks', 'card-panel',
   'deck-name', 'progress', 'question', 'question-media', 'answer', 'answer-text',
   'answer-media', 'reveal-row', 'reveal-answer', 'rating-row', 'choose-deck', 'reload-card', 'status',
+  'warnings-panel', 'warnings-list',
   'autoshow-mode', 'autoshow-status', 'refresh-autoshow',
 ].map((id) => [id, document.getElementById(id)]));
 const el = (id) => elements[id];
@@ -34,6 +35,20 @@ function message(text, error = false) {
   if (dismissed) return;
   el('status').textContent = text;
   el('status').dataset.error = String(error);
+}
+
+function renderWarnings(warnings) {
+  if (dismissed) return;
+  const items = Array.isArray(warnings)
+    ? warnings.filter((warning) => typeof warning === 'string' && warning.trim()).slice(0, 5)
+    : [];
+  el('warnings-list').replaceChildren();
+  for (const warning of items) {
+    const item = document.createElement('li');
+    item.textContent = warning.slice(0, 1000);
+    el('warnings-list').append(item);
+  }
+  el('warnings-panel').hidden = items.length === 0;
 }
 
 function rememberedSession() {
@@ -216,7 +231,10 @@ function renderControls() {
   el('reveal-answer').disabled = busy;
   el('rating-row').hidden = view.done || !revealed || awaitingNextCard;
   for (const button of el('rating-row').querySelectorAll('button')) {
-    button.disabled = busy || awaitingNextCard || (pendingRating !== null && pendingRating.ease !== Number(button.dataset.ease));
+    const ease = Number(button.dataset.ease);
+    button.disabled = busy || awaitingNextCard || (pendingRating !== null && pendingRating.ease !== ease);
+    const name = button.querySelector('span');
+    if (name) name.textContent = pendingRating?.ease === ease ? `Check ${labels[ease - 1]}` : labels[ease - 1];
   }
   el('choose-deck').disabled = busy || pendingRating !== null;
   el('reload-card').disabled = busy || pendingRating !== null;
@@ -235,7 +253,7 @@ function paintView() {
   renderControls();
 }
 
-function acceptView(next) {
+function acceptView(next, warnings = []) {
   if (!validView(next)) {
     throw new Error('Anki returned an invalid review card. No card was advanced here.');
   }
@@ -247,6 +265,7 @@ function acceptView(next) {
   rememberPending(null);
   if (dismissed) { view = null; return; }
   paintView();
+  renderWarnings(warnings);
   message(view.done ? `${view.reviewed} reviews saved in Anki. This deck is clear for now.` : 'Reveal the answer, then choose an Anki rating.');
 }
 
@@ -290,7 +309,7 @@ async function start() {
   message('Finding the next due or new card…');
   try {
     const result = await call('start_anki_review', { deck });
-    acceptView(result.view);
+    acceptView(result.view, result.warnings);
   } catch (error) {
     message(`Could not start review: ${error.message ?? String(error)}`, true);
   } finally {
@@ -306,7 +325,7 @@ async function resume(sessionId) {
   message('Restoring your Anki review…');
   try {
     const result = await call('resume_anki_review', { sessionId });
-    acceptView(result.view);
+    acceptView(result.view, result.warnings);
   } catch (error) {
     message(`Could not reload this review: ${error.message ?? String(error)} Open Anki and try again.`, true);
   } finally {
@@ -333,8 +352,20 @@ async function rate(ease) {
     `Saving ${labels[ease - 1]} in Anki… Keep this card open until Anki confirms it.`);
   try {
     const result = await call('rate_anki_review', args);
+    if (result.recorded === false) {
+      pendingRating = null;
+      rememberPending(null);
+      try {
+        acceptView(result.view, result.warnings);
+        message('This rating was not confirmed here. The review was refreshed to avoid a duplicate; check Anki if needed.');
+      } catch {
+        awaitingNextCard = true;
+        message('This rating was not confirmed here, and the refreshed card could not load. Use Reload card.', true);
+      }
+      return;
+    }
     if (result.recorded !== true) throw new Error('Anki did not confirm the rating.');
-    try { acceptView(result.view); }
+    try { acceptView(result.view, result.warnings); }
     catch (error) {
       pendingRating = null;
       awaitingNextCard = true;
@@ -342,7 +373,11 @@ async function rate(ease) {
       message(`Rating saved in Anki, but the next card could not load: ${error.message ?? String(error)} Use Reload card.`, true);
     }
   } catch (error) {
-    message(`Rating was not confirmed: ${error.message ?? String(error)} Retry ${labels[ease - 1]} on this card.`, true);
+    const detail = error.message ?? String(error);
+    const nextStep = /may still finish in Anki|No second grade was sent/i.test(detail)
+      ? ''
+      : ` Tap Check ${labels[ease - 1]} to check Anki again. If it stays uncertain, review this card in Anki.`;
+    message(`Rating was not confirmed: ${detail}${nextStep}`, true);
   } finally {
     busy = false;
     renderControls();
@@ -365,6 +400,7 @@ el('choose-deck').addEventListener('click', () => {
   view = null;
   revealed = false;
   awaitingNextCard = false;
+  renderWarnings([]);
   renderControls();
   message('Choose a deck to start.');
 });
@@ -394,6 +430,7 @@ function dismiss() {
   el('question-media').replaceChildren();
   el('answer-media').replaceChildren();
   el('rating-row').replaceChildren();
+  el('warnings-list').replaceChildren();
   el('deck-select').replaceChildren();
   el('status').textContent = '';
   el('review-root').hidden = true;

@@ -26,7 +26,7 @@ codex plugin marketplace remove while-anki
 
 Your saved deck and review sessions remain in the same local data directory.
 
-The widget can review all available **due and new** cards, including those beyond Anki’s daily cap. Future, suspended, and buried cards are excluded. Ratings change your real Anki schedule. If Anki cannot confirm a rating, the current card stays in place for a safe retry.
+The widget can review all available **due and new** cards, including those beyond Anki’s daily cap. Future, suspended, and buried cards are excluded. Ratings change your real Anki schedule. If a rating response is lost, **Check Again** verifies the card without sending a possible duplicate; an unresolved card should be reviewed in Anki. Missing or unsupported media is flagged beside the card.
 
 ### Show Anki automatically
 
@@ -38,7 +38,7 @@ Open Anki once, then choose **Auto-show** in the widget:
 
 The preference is saved locally and applies across future Codex tasks on the same computer. An explicit “no Anki” request overrides it. Codex hides each opened view when its response is finished without grading or abandoning the current card.
 
-Auto-show uses a bundled `UserPromptSubmit` hook. Codex requires you to review and trust plugin hooks once before they run; use `/hooks` in Codex to inspect it if prompted. The hook reads the saved choice and adds a short instruction for Codex. It does not contact Anki or draw the widget itself, so the widget appears at Codex’s first tool call, after processing begins. [Plugin hooks documentation](https://developers.openai.com/plugins/build/plugins#bundled-mcp-servers-and-lifecycle-hooks)
+Auto-show uses a bundled `UserPromptSubmit` hook. `PostToolUse`, `Stop`, and `Interrupt` hooks track the view opened for the current turn and request its closure if Codex misses the normal hide call. They never grade cards. Codex requires you to review and trust new or changed plugin hooks before they run; use `/hooks` if prompted. The prompt hook does not draw the widget itself, so the widget appears at Codex’s first tool call after processing begins. [Codex hook documentation](https://developers.openai.com/codex/hooks)
 
 ### Data and permissions
 
