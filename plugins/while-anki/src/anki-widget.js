@@ -1,6 +1,6 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
-const app = new App({ name: 'While Anki review', version: '0.4.0' });
+const app = new App({ name: 'While Anki review', version: '0.4.1' });
 const elements = Object.fromEntries([
   'review-root',
   'deck-panel', 'deck-select', 'start-review', 'resume-review', 'refresh-decks', 'card-panel',
@@ -171,8 +171,32 @@ async function saveAutoShow() {
   }
 }
 
-function addMedia(container, items, side) {
+function clearMedia(container) {
+  for (const audio of container.querySelectorAll('audio')) {
+    audio.pause();
+    if (audio.dataset.blobUrl) URL.revokeObjectURL(audio.dataset.blobUrl);
+  }
   container.replaceChildren();
+}
+
+function setAudioSource(audio, src) {
+  const comma = src.indexOf(',');
+  const mime = src.slice(5, src.indexOf(';'));
+  const binary = atob(src.slice(comma + 1));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  audio.dataset.blobUrl = blobUrl;
+  audio.addEventListener('error', () => {
+    if (audio.dataset.blobUrl !== blobUrl) return;
+    URL.revokeObjectURL(blobUrl);
+    delete audio.dataset.blobUrl;
+    audio.src = src;
+  }, { once: true });
+  audio.src = blobUrl;
+}
+
+function addMedia(container, items, side) {
+  clearMedia(container);
   if (!Array.isArray(items)) return;
   for (const item of items) {
     if (!item || typeof item.src !== 'string') continue;
@@ -184,10 +208,21 @@ function addMedia(container, items, side) {
     } else if (item.type === 'audio' && audioSource.test(item.src)) {
       const audio = document.createElement('audio');
       audio.controls = true;
-      audio.preload = 'none';
-      audio.src = item.src;
+      audio.preload = 'metadata';
+      setAudioSource(audio, item.src);
       audio.setAttribute('aria-label', `${side} audio`);
+      const status = document.createElement('span');
+      status.className = 'audio-status';
+      status.setAttribute('role', 'status');
+      audio.addEventListener('loadedmetadata', () => {
+        status.textContent = `Audio loaded (${audio.duration.toFixed(2)} seconds).`;
+      });
+      audio.addEventListener('error', () => {
+        status.textContent = `Audio failed to load (media error ${audio.error?.code ?? 'unknown'}, network state ${audio.networkState}).`;
+      });
       container.append(audio);
+      container.append(status);
+      audio.load();
     }
   }
 }
@@ -427,8 +462,8 @@ function dismiss() {
   el('answer-text').textContent = '';
   el('deck-name').textContent = '';
   el('progress').textContent = '';
-  el('question-media').replaceChildren();
-  el('answer-media').replaceChildren();
+  clearMedia(el('question-media'));
+  clearMedia(el('answer-media'));
   el('rating-row').replaceChildren();
   el('warnings-list').replaceChildren();
   el('deck-select').replaceChildren();

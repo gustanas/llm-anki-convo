@@ -59,8 +59,13 @@
       } else if (item.type === 'audio' && audioSource.test(item.src)) {
         const audio = document.createElement('audio');
         audio.controls = true;
-        audio.preload = 'none';
-        audio.src = item.src;
+        audio.preload = 'metadata';
+        const comma = item.src.indexOf(',');
+        const mime = item.src.slice(5, item.src.indexOf(';'));
+        const binary = atob(item.src.slice(comma + 1));
+        const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        const blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        audio.src = blobUrl;
         audio.setAttribute('aria-label', `${side} audio`);
         container.append(audio);
       }

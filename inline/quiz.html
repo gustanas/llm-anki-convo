@@ -116,11 +116,35 @@
   }
 
   function addFeedback(title, detail) {
+    clearAudio(feedback);
     const lead = document.createElement('p');
     lead.textContent = title;
     const explanation = document.createElement('p');
     explanation.textContent = detail;
     feedback.replaceChildren(lead, explanation);
+  }
+
+  function clearAudio(container) {
+    for (const audio of container.querySelectorAll('audio')) {
+      audio.pause();
+      if (audio.dataset.blobUrl) URL.revokeObjectURL(audio.dataset.blobUrl);
+    }
+  }
+
+  function setAudioSource(audio, src) {
+    const comma = src.indexOf(',');
+    const mime = src.slice(5, src.indexOf(';'));
+    const binary = atob(src.slice(comma + 1));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    audio.dataset.blobUrl = blobUrl;
+    audio.addEventListener('error', () => {
+      if (audio.dataset.blobUrl !== blobUrl) return;
+      URL.revokeObjectURL(blobUrl);
+      delete audio.dataset.blobUrl;
+      audio.src = src;
+    }, { once: true });
+    audio.src = blobUrl;
   }
 
   function addMedia(container, media, side) {
@@ -135,8 +159,8 @@
       } else if (item.type === 'audio' && audioSource.test(item.src)) {
         const audio = document.createElement('audio');
         audio.controls = true;
-        audio.preload = 'none';
-        audio.src = item.src;
+        audio.preload = 'metadata';
+        setAudioSource(audio, item.src);
         audio.setAttribute('aria-label', typeof item.alt === 'string' && item.alt.trim() ? item.alt : `${side} audio`);
         audio.textContent = 'Your browser cannot play this audio.';
         container.append(audio);
@@ -150,8 +174,10 @@
       : flashcardCount === 0 ? `${correct} correct · ${answered} answered`
       : `${reviewed} reviewed · ${correct} / ${answered} quiz answers correct`;
     note.hidden = flashcardCount === 0;
+    clearAudio(questionMedia);
     questionMedia.replaceChildren();
     choices.replaceChildren();
+    clearAudio(feedback);
     feedback.replaceChildren();
     reveal.hidden = true;
     next.hidden = false;

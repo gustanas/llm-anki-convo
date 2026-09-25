@@ -10,7 +10,7 @@ import { ANKI_RESOURCE_URI, registerAnkiReviewTools } from './anki-tools.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export function createWhileAnkiServer() {
-  const server = new McpServer({ name: 'While Anki', version: '0.4.0' });
+  const server = new McpServer({ name: 'While Anki', version: '0.4.1' });
 
   registerAnkiReviewTools(server);
 
@@ -25,7 +25,10 @@ export function createWhileAnkiServer() {
         uri: ANKI_RESOURCE_URI,
         mimeType: RESOURCE_MIME_TYPE,
         text: html,
-        _meta: { 'openai/widgetMinFrameHeight': 1 },
+        _meta: {
+          'openai/widgetMinFrameHeight': 1,
+          ui: { csp: { resourceDomains: ['blob:', 'data:'] } },
+        },
       }],
     };
   });

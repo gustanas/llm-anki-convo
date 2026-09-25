@@ -9,7 +9,7 @@ import { rateReview, resumeReview, startReview, ratingName } from './anki-review
 import { readAutoShowMode, resolveAutoShowSettingsPath, writeAutoShowMode } from './auto-show-settings.mjs';
 import { isViewMarkedHidden, markViewHidden, resolveViewLifecycleDir } from './view-lifecycle.mjs';
 
-export const ANKI_RESOURCE_URI = 'ui://while-anki/anki-review-v3.html';
+export const ANKI_RESOURCE_URI = 'ui://while-anki/anki-review-v6.html';
 const HIDDEN_VIEW_TTL_MS = 60 * 60 * 1000;
 const IDLE_VIEW_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_VIEWS = 256;
