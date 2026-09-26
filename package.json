@@ -1,16 +1,14 @@
 {
-  "name": "while-codex-quiz",
+  "name": "while-anki",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "An inline quiz for time spent waiting for Codex.",
-  "engines": { "node": ">=22" },
+  "description": "Review Anki cards in Codex while it works.",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "test": "node --test",
-    "inline:build": "node scripts/build-inline.mjs",
-    "anki:decks": "node scripts/anki.mjs decks",
-    "anki:pull": "node scripts/anki.mjs pull",
-    "anki:build": "node scripts/build-anki.mjs",
-    "anki:review": "node scripts/review-anki.mjs"
+    "build": "npm run build --prefix plugins/while-anki",
+    "test": "node --test test/*.test.mjs plugins/while-anki/test/*.test.mjs"
   }
 }

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeEntities, htmlToText, normalizeAnkiCards } from '../lib/anki-cards.mjs';
-import { buildInlineHtml } from '../scripts/build-inline.mjs';
 
 // All fields, media bytes, deck names and IDs in this file are synthetic.
 const rawCard = (overrides = {}) => ({
@@ -21,7 +20,7 @@ test('HTML extraction decodes text once and removes executable or hidden markup'
   assert.equal(htmlToText('Visible<script>unterminated'), 'Visible');
 });
 
-test('rendered basic and cloze sides keep actual answers and satisfy the inline builder', async () => {
+test('rendered basic and cloze sides keep actual answers', async () => {
   const result = await normalizeAnkiCards([
     rawCard(),
     rawCard({ cardId: 2, question: 'The capital is <span class="cloze">[city]</span>.', answer: 'The capital is <span class="cloze">Paris</span>.' }),
@@ -29,7 +28,6 @@ test('rendered basic and cloze sides keep actual answers and satisfy the inline 
   assert.deepEqual(result.cards.map(({ question, answer }) => [question, answer]), [['Front', 'Back'], ['The capital is [city].', 'The capital is Paris.']]);
   assert.equal(result.cards[0].type, 'flashcard');
   assert.deepEqual(result.warnings, []);
-  assert.doesNotThrow(() => buildInlineHtml('<script type="application/json">__WHILE_CARDS_JSON__</script>', result.cards));
 });
 
 test('only a real answer-divider id and actual media src attributes are used', async () => {
@@ -110,7 +108,6 @@ test('discarded cards do not spend the output media budget', async () => {
   assert.deepEqual(result.cards.map((card) => card.id), ['anki:2']);
   assert.equal(result.mediaBytes, 5);
   assert.equal(result.cards[0].answer, '');
-  assert.doesNotThrow(() => buildInlineHtml('__WHILE_CARDS_JSON__', result.cards));
 });
 
 test('skip-identical and unsupported empty cards still allow later useful cards', async () => {

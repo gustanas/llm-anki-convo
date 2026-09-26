@@ -4,10 +4,7 @@ import path from 'node:path';
 import { deckQuery } from '../../lib/anki-connect.mjs';
 import { normalizeAnkiCards } from '../../lib/anki-cards.mjs';
 
-// This is the MCP App's review engine. Unlike the legacy inline review CLI, it
-// returns card data directly to the widget and writes only private session
-// receipts. In particular, it has no dependency on repository-local dist/ or
-// on CLI modules that would execute when bundled into the plugin server.
+// Return card data directly to the widget and store private session receipts.
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LABELS = ['Again', 'Hard', 'Good', 'Easy'];
 const DEAD_LOCK_GRACE_MS = 35 * 1000;

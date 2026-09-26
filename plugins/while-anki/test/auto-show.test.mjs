@@ -99,7 +99,7 @@ test('prompt hook honors off, long tasks, and every message without echoing prom
   });
 });
 
-test('prompt hook suppresses explicit no-Anki requests and legacy ratings', async () => {
+test('prompt hook suppresses explicit no-Anki requests', async () => {
   await withTempDir(async (directory) => {
     await writeAutoShowMode(path.join(directory, 'auto-show.json'), 'every_message');
     for (const prompt of [
@@ -108,7 +108,6 @@ test('prompt hook suppresses explicit no-Anki requests and legacy ratings', asyn
       'Fix this bug without Anki.',
       'Skip Anki this time.',
       "I don't want Anki here.",
-      'While Anki rating v1: session=foo card=1 nonce=bar ease=3',
     ]) {
       assert.equal(await runHook(directory, prompt), null, prompt);
     }

@@ -7,7 +7,6 @@ const CONTEXT = Object.freeze({
 });
 
 function suppressForPrompt(prompt) {
-  if (prompt.startsWith('While Anki rating v1:')) return true;
   return /\b(?:no\s+(?:anki|flashcards?)|without\s+(?:anki|flashcards?)|(?:don['’]?t|do\s+not|never)\s+(?:show|open|display|use)\s+(?:any\s+|the\s+)?(?:anki|flashcards?)|(?:don['’]?t|do\s+not)\s+want\s+(?:to\s+see\s+)?(?:any\s+|the\s+)?anki|(?:skip|hide|disable|turn\s+off)\s+(?:the\s+)?anki)\b/i.test(prompt);
 }
 

@@ -1,10 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createAnkiConnect, deckQuery, pullCards, validateAnkiUrl } from '../lib/anki-connect.mjs';
-import { parseArgs } from '../scripts/anki.mjs';
+import { createAnkiConnect, deckQuery, validateAnkiUrl } from '../lib/anki-connect.mjs';
 
 async function fakeAnki(t, handler, options = {}) {
   const calls = [];
@@ -27,7 +24,6 @@ async function fakeAnki(t, handler, options = {}) {
 }
 
 const reply = (res, result, error = null) => res.end(JSON.stringify({ result, error }));
-const card = (cardId, deckName = 'Test') => ({ cardId, deckName, queue: 0, fields: { Front: { value: `Card ${cardId}`, order: 0 } }, question: '<b>Raw front</b>', answer: '<b>Raw back</b>' });
 
 test('endpoints stay on loopback and never include credentials or a remote URL', () => {
   assert.equal(validateAnkiUrl('http://localhost:8765').hostname, '127.0.0.1');
@@ -107,62 +103,12 @@ test('closed Anki gives a useful connection error', async (t) => {
   await assert.rejects(client.version(), (error) => error.code === 'CONNECTION_ERROR' && error.message.includes('Open Anki') && error.message.includes('restart Anki'));
 });
 
-test('pull prioritizes due then new cards and fetches only bounded batches', async () => {
-  const queries = [];
-  const batches = [];
-  const client = {
-    version: async () => 6,
-    deckNames: async () => ['Test'],
-    findCards: async (query) => {
-      queries.push(query);
-      return query.endsWith('is:due') ? Array.from({ length: 27 }, (_, index) => index + 1) : Array.from({ length: 30 }, (_, index) => index + 20);
-    },
-    cardsInfo: async (ids) => { batches.push(ids); return ids.map((id) => card(id)).reverse(); },
-  };
-  const snapshot = await pullCards({ client, deck: 'Test', limit: 30 });
-  assert.deepEqual(snapshot.selection, { due: 27, new: 3, other: 0 });
-  assert.deepEqual(snapshot.cards.map((item) => item.cardId), Array.from({ length: 30 }, (_, index) => index + 1));
-  assert.deepEqual(batches.map((ids) => ids.length), [25, 5]);
-  assert.equal(queries.length, 2);
-  assert.ok(queries.every((query) => query.includes('-is:suspended -is:buried')));
-  assert.deepEqual(snapshot.warnings, []);
-  assert.equal(snapshot.cards[0].question, '<b>Raw front</b>');
-});
-
-test('fallback is explicit, duplicate IDs are removed, and unavailable cards are excluded', async () => {
-  const deck = 'Test "quoted"_*\\deck';
-  const queries = [];
-  const snapshot = await pullCards({ deck, limit: 4, client: {
-    version: async () => 6,
-    deckNames: async () => [deck],
-    findCards: async (query) => {
-      queries.push(query);
-      return queries.length === 1 ? [1] : queries.length === 2 ? [1, 2] : [2, 3, 4, 5];
-    },
-    cardsInfo: async () => [card(1, deck), { ...card(2, deck), queue: -1 }, card(3, `${deck}::Child`), {}, card(999, deck), card(3, deck)],
-  } });
-  assert.deepEqual(snapshot.cards.map((item) => item.cardId), [1, 3]);
-  assert.deepEqual(snapshot.selection, { due: 1, new: 0, other: 1 });
-  assert.equal(snapshot.warnings.length, 2);
-  assert.match(snapshot.warnings.join(' '), /other available card/);
-  assert.ok(queries.every((query) => query.startsWith(`${deckQuery(deck)} `)));
-  assert.equal(deckQuery(deck), 'deck:"Test \\"quoted\\"\\_\\*\\\\deck"');
-});
-
-test('missing decks and unavailable APIs stop before requesting cards', async () => {
-  const client = { version: async () => 6, deckNames: async () => [], findCards: async () => assert.fail('Must not fetch an unknown deck') };
-  await assert.rejects(pullCards({ client, deck: 'Unknown' }), { code: 'DECK_NOT_FOUND' });
-  await assert.rejects(pullCards({ client: { ...client, version: async () => 5 }, deck: 'Unknown' }), { code: 'OLD_VERSION' });
-  await assert.rejects(pullCards({ client, deck: 'Unknown', limit: 101 }), /between 1 and 100/);
-});
-
-test('CLI private snapshots default to ignored dist and cannot escape it', () => {
-  const root = fileURLToPath(new URL('../', import.meta.url));
-  const options = parseArgs(['pull', '--deck', 'Test']);
-  assert.equal(options.output, path.join(root, 'dist', 'anki-raw.json'));
-  assert.equal(options.limit, 10);
-  assert.deepEqual(parseArgs(['decks']), { command: 'decks' });
-  assert.throws(() => parseArgs(['pull', '--deck', 'Test', '--output', path.join(root, 'data', 'private.json')]), /ignored dist/);
-  assert.throws(() => parseArgs(['pull', '--deck', 'Test', '--output', `${root}dist/../private.json`]), /ignored dist/);
-  assert.throws(() => parseArgs(['pull', '--deck', 'Test', '--limit', '0']), /between 1 and 100/);
+test('deck searches escape special characters and reject invalid names', () => {
+  assert.equal(deckQuery('Parent::Child'), 'deck:"Parent::Child"');
+  for (const character of ['"', '*', '_', String.fromCharCode(92)]) {
+    assert.equal(deckQuery(character), 'deck:"' + String.fromCharCode(92) + character + '"');
+  }
+  for (const value of ['', ' ', null, 'x'.repeat(1001), 'deck\nname']) {
+    assert.throws(() => deckQuery(value), /valid Anki deck name/);
+  }
 });
