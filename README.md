@@ -1,54 +1,87 @@
 # While Anki
 
-Review Anki cards inside a Codex desktop conversation while Codex works. Reveal the answer and choose **Again**, **Hard**, **Good**, or **Easy**; the rating is saved in Anki and the next card appears without posting a chat message. Ask Codex to hide the card view when it finishes.
+**Review your flashcards while Codex works.**
 
-## Install the Codex plugin
+While Anki puts your Anki deck inside a Codex conversation. Reveal an answer, rate the card, and move to the next one while Codex handles your task. Ratings save directly in Anki, and the review panel hides when Codex finishes.
 
-1. Install [Anki](https://apps.ankiweb.net/), import a deck, and install [AnkiConnect](https://ankiweb.net/shared/info/2055492159) from **Tools → Add-ons → Get Add-ons** using code `2055492159`. Restart Anki and leave it open while reviewing.
-2. Use the Codex desktop app and install [Node.js 22 or newer](https://nodejs.org/) on the same computer as Anki. The plugin does not require cloning this repository, running `npm ci`, or building JavaScript.
-3. Add the GitHub marketplace and install the plugin:
+- **Your own decks** — review due and new cards, with supported images and audio.
+- **Familiar ratings** — Again, Hard, Good, and Easy update your Anki schedule.
+- **One review panel** — the next card appears in place, without adding chat messages.
+- **Optional auto-show** — open Anki for longer tasks or every message.
 
-   ```sh
-   codex plugin marketplace add gustanas/llm-anki-convo
-   codex plugin add while-anki@llm-anki-convo
-   ```
+<img src="docs/images/review-card.png" alt="While Anki showing a sample Japanese card, its revealed answer, and the Again, Hard, Good, and Easy rating buttons." width="620">
 
-4. Start a **new Codex task** and ask: “Show Anki while you work, then hide it.” Choose a deck in the inline widget. The last deck you used is selected next time when it is still available. Use the **Auto-show** control in the widget to choose when Anki should appear on future messages.
+*The review panel with a sample card. Screenshots use example data.*
 
-The GitHub repository and marketplace are both named `llm-anki-convo`; the plugin's install ID is `while-anki`, matching its **While Anki** display name. This marketplace is separate from OpenAI’s universal public Plugins Directory. [Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
+## Get started
 
-If you installed the earlier `mcp-apps-probe@while-anki` version, remove that plugin and its old marketplace before running the new install commands:
+You’ll need the **Codex desktop app**, **Anki with a deck**, and **[Node.js 22 or newer](https://nodejs.org/)** on the same computer. The commands below use the `codex` CLI.
 
-```sh
-codex plugin remove mcp-apps-probe@while-anki
-codex plugin marketplace remove while-anki
+### 1. Connect Anki
+
+In [Anki](https://apps.ankiweb.net/), open **Tools → Add-ons → Get Add-ons** and enter this code to install [AnkiConnect](https://ankiweb.net/shared/info/2055492159):
+
+```text
+2055492159
 ```
 
-Your saved deck and review sessions remain in the same local data directory.
+Restart Anki and leave it open while you review.
 
-The widget can review all available **due and new** cards, including those beyond Anki’s daily cap. Future, suspended, and buried cards are excluded. Ratings change your real Anki schedule. If a rating response is lost, **Check Again** verifies the card without sending a possible duplicate; an unresolved card should be reviewed in Anki. Missing or unsupported media is flagged beside the card.
+### 2. Install While Anki
 
-### Show Anki automatically
+Run these commands in a terminal:
 
-Open Anki once, then choose **Auto-show** in the widget:
+```sh
+codex plugin marketplace add gustanas/llm-anki-convo
+codex plugin add while-anki@llm-anki-convo
+```
 
-- **Off** (default): show Anki only when you ask.
-- **Long tasks**: also show it for work likely to take multiple steps, such as coding, research, or file changes. Skip quick questions and status checks.
-- **Every message**: show it for ordinary messages too, including quick questions.
+The plugin comes ready to run; no repository clone or build is needed.
 
-The preference is saved locally and applies across future Codex tasks on the same computer. An explicit “no Anki” request overrides it. Codex hides each opened view when its response is finished without grading or abandoning the current card.
+### 3. Start reviewing
 
-Auto-show uses a bundled `UserPromptSubmit` hook. `PostToolUse`, `Stop`, and `Interrupt` hooks track the view opened for the current turn and request its closure if Codex misses the normal hide call. They never grade cards. Codex requires you to review and trust new or changed plugin hooks before they run; use `/hooks` if prompted. The prompt hook does not draw the widget itself, so the widget appears at Codex’s first tool call after processing begins. [Codex hook documentation](https://developers.openai.com/codex/hooks)
+Open a **new Codex task** and include this with your request:
 
-### Data and permissions
+> Show Anki while you work, then hide it when you finish.
 
-The local MCP server talks to AnkiConnect on loopback. Card text and supported media are shown inside Codex; the last-deck preference, review session data, and rating receipts are stored locally. The plugin does not need an account or a hosted service. Keep generated card files and session data out of Git. You can set `ANKI_CONNECT_URL` for a different local address or `ANKI_CONNECT_KEY` if your AnkiConnect setup uses an API key; only loopback HTTP endpoints are accepted.
+Choose a deck and click **Start review**. Think of the answer, click **Show answer**, then choose your rating. Use the play button for audio. Your last deck is remembered for next time.
 
-See the [plugin guide](plugins/while-anki/README.md) for development and troubleshooting.
+## Make it automatic
+
+Choose an **Auto-show** setting in the review panel:
+
+| Setting | When Anki appears |
+| --- | --- |
+| **Off** (default) | Only when you ask. |
+| **Long tasks** | During work such as coding, research, and file changes. |
+| **Every message** | During quick questions and longer tasks. |
+
+<img src="docs/images/deck-and-auto-show.png" alt="Deck selection and the Auto-show setting, with Long tasks selected." width="620">
+
+The setting carries over to future tasks on this computer. Say **“no Anki for this task”** to skip it. Hiding the panel keeps your current review session and does not rate the card.
+
+If Codex asks you to trust the plugin’s hooks, review them with `/hooks` so auto-show can run. The panel appears after Codex starts processing your request, so it may take a moment.
+
+## Good to know
+
+**Ratings count.** These are real Anki reviews. The queue includes all available due and new cards, **even beyond your deck’s daily limits**. Future, suspended, and buried cards are excluded.
+
+**Card layouts may look different.** The panel displays card text and supported local images and audio. Custom Anki templates and add-on controls may not carry over; missing or unsupported content is reported in the panel.
+
+**Anki runs locally.** The plugin connects to Anki on your computer and stores preferences and review sessions locally. Card text and media are displayed inside Codex.
+
+## Need help?
+
+| Problem | What to try |
+| --- | --- |
+| Anki won’t connect | Keep Anki open, check that AnkiConnect is installed, and close any blocking Anki dialog. Then try **Refresh decks** or **Reload card**. |
+| A rating wasn’t confirmed | Use the **Check** button for your selected rating. If it remains unresolved, check the card in Anki. |
+| Audio or an image won’t load | Read the notice in the panel and check that the media works in Anki itself. |
+| Anki doesn’t appear automatically | Check **Auto-show** and review the plugin’s hooks with `/hooks`. |
+
+See the [plugin guide](plugins/while-anki/README.md) for configuration, data locations, and migration from an earlier installation.
 
 ## Development
-
-The plugin lives in `plugins/while-anki/`. Shared AnkiConnect and card/media parsing code lives in `lib/`, with tests in `test/`.
 
 From the repository root:
 
@@ -58,4 +91,4 @@ npm run build
 npm test
 ```
 
-The build regenerates the bundled server and widget assets shipped with the plugin. Tests cover the shared libraries and plugin using local fixtures; they do not grade cards in your Anki collection.
+The plugin lives in `plugins/while-anki/`; shared AnkiConnect and card/media parsing code lives in `lib/`. The build regenerates the bundled server and widget. Tests use local fixtures and do not grade cards in your collection. See the [development guide](plugins/while-anki/README.md#develop-and-verify) for the optional live smoke test.
