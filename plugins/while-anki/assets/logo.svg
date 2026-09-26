@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>While Anki — a star on overlapping flashcards</title>
+  <rect width="512" height="512" rx="112" fill="#315FC8"/>
+  <rect x="95" y="117" width="252" height="292" rx="36" transform="rotate(-12 95 117)" fill="#ABC6FF"/>
+  <rect x="149" y="101" width="264" height="308" rx="36" fill="#FFFFFF"/>
+  <path d="M281 150 300 206 359 206 312 241 330 297 281 263 233 297 251 241 203 206 263 206Z" fill="#315FC8"/>
+  <rect x="211" y="327" width="140" height="14" rx="7" fill="#AFC6F3"/>
+  <rect x="236" y="357" width="90" height="14" rx="7" fill="#D9E5FA"/>
+</svg>

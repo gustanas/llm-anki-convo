@@ -10,7 +10,7 @@ import { ANKI_RESOURCE_URI, registerAnkiReviewTools } from './anki-tools.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export function createWhileAnkiServer() {
-  const server = new McpServer({ name: 'While Anki', version: '0.4.1' });
+  const server = new McpServer({ name: 'While Anki', version: '0.4.2' });
 
   registerAnkiReviewTools(server);
 

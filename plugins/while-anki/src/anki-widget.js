@@ -1,6 +1,6 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
-const app = new App({ name: 'While Anki review', version: '0.4.1' });
+const app = new App({ name: 'While Anki review', version: '0.4.2' });
 const elements = Object.fromEntries([
   'review-root',
   'deck-panel', 'deck-select', 'start-review', 'resume-review', 'refresh-decks', 'card-panel',

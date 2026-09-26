@@ -1,3 +1,5 @@
+<img src="plugins/while-anki/assets/logo.png" alt="While Anki logo" width="96">
+
 # While Anki
 
 **Review your flashcards while Codex works.**
@@ -9,9 +11,9 @@ While Anki puts your Anki deck inside a Codex conversation. Reveal an answer, ra
 - **One review panel** — the next card appears in place, without adding chat messages.
 - **Optional auto-show** — open Anki for longer tasks or every message.
 
-<img src="docs/images/review-card.png" alt="While Anki showing a sample Japanese card, its revealed answer, and the Again, Hard, Good, and Easy rating buttons." width="620">
+<img src="docs/images/review-card.png" alt="While Anki showing a Japanese card with audio, an image, its revealed answer, and the Again, Hard, Good, and Easy rating buttons." width="620">
 
-*The review panel with a sample card. Screenshots use example data.*
+*Reviewing a Japanese card with audio and images inside Codex.*
 
 ## Get started
 
@@ -56,7 +58,7 @@ Choose an **Auto-show** setting in the review panel:
 | **Long tasks** | During work such as coding, research, and file changes. |
 | **Every message** | During quick questions and longer tasks. |
 
-<img src="docs/images/deck-and-auto-show.png" alt="Deck selection and the Auto-show setting, with Long tasks selected." width="620">
+<img src="docs/images/deck-and-auto-show.png" alt="While Anki inside a Codex conversation, showing deck selection and Auto-show set to Every message." width="620">
 
 The setting carries over to future tasks on this computer. Say **“no Anki for this task”** to skip it. Hiding the panel keeps your current review session and does not rate the card.
 

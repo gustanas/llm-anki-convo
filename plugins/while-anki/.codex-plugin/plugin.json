@@ -1,6 +1,6 @@
 {
   "name": "while-anki",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Review Anki cards in Codex while it works.",
   "author": {
     "name": "gustanas",
@@ -8,7 +8,12 @@
   },
   "homepage": "https://github.com/gustanas/llm-anki-convo",
   "repository": "https://github.com/gustanas/llm-anki-convo",
-  "keywords": ["anki", "flashcards", "spaced-repetition", "codex"],
+  "keywords": [
+    "anki",
+    "flashcards",
+    "spaced-repetition",
+    "codex"
+  ],
   "interface": {
     "displayName": "While Anki",
     "shortDescription": "Review Anki while Codex works.",
@@ -22,7 +27,10 @@
     "websiteURL": "https://github.com/gustanas/llm-anki-convo",
     "defaultPrompt": [
       "Show Anki while you work, then hide it when finished."
-    ]
+    ],
+    "brandColor": "#315FC8",
+    "logo": "./assets/logo.png",
+    "composerIcon": "./assets/logo.png"
   },
   "mcpServers": "./.mcp.json"
 }
